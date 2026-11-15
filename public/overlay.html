@@ -430,6 +430,18 @@
   const timers = new Map();
 
   // ---------- helpers ----------
+  const isColor = (v) => /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v);
+  // drop anything in the config that is not a plain color / number / known keyword
+  function sanitize(c) {
+    const def = buildConfig({ theme: c.theme });
+    ["textColor", "nameColor", "bgColor", "memberColor", "modColor", "ownerColor"].forEach(k => { if (!isColor(c[k])) c[k] = def[k]; });
+    ["fontSize", "radius", "iconSize", "gap", "padding", "width", "bgOpacity", "scOpacity", "amountSize", "maxMessages", "fadeOutSec"].forEach(k => {
+      const n = Number(c[k]); c[k] = Number.isFinite(n) ? n : def[k];
+    });
+    ["animation", "direction", "align", "amountStyle", "amountPos"].forEach(k => { if (!/^[a-z]+$/.test(c[k])) c[k] = def[k]; });
+    if (!FONTS.includes(c.font)) c.font = def.font;
+    return c;
+  }
   function hexToRgba(hex, a) {
     const h = (hex || "#000").replace("#", "");
     const n = parseInt(h.length === 3 ? h.split("").map(c => c + c).join("") : h, 16);
@@ -455,7 +467,7 @@
 
   // ---------- apply config ----------
   function applyConfig(c) {
-    cfg = buildConfig(c);
+    cfg = sanitize(buildConfig(c));
     const r = document.documentElement.style;
     r.setProperty("--font", `"${cfg.font}"`);
     r.setProperty("--font-size", cfg.fontSize + "px");
@@ -512,8 +524,9 @@
     if (m.isOwner) el.classList.add("owner");
     if (m.superchat && cfg.superchatHighlight) {
       el.classList.add("superchat");
-      el.style.setProperty("--sc", hexToRgba(m.superchat.color || "#1e88e5", "var(--sc-a,1)"));
-      el.style.setProperty("--sc-solid", m.superchat.color || "#1e88e5");
+      const scColor = isColor(m.superchat.color) ? m.superchat.color : "#1e88e5";
+      el.style.setProperty("--sc", hexToRgba(scColor, "var(--sc-a,1)"));
+      el.style.setProperty("--sc-solid", scColor);
     }
 
     let html = "";

@@ -11,11 +11,24 @@ const PORT = Number(process.env.PORT) || 3456;
 const CONFIG_PATH = path.join(__dirname, "config.json");
 
 const app = express();
+
+// ---------- local-only guard ----------
+// Only this PC's own pages (settings page / OBS browser source) may talk to the server.
+// Blocks other devices on the network and other websites open in the browser.
+const ALLOWED_HOSTS = new Set(["localhost:" + PORT, "127.0.0.1:" + PORT, "[::1]:" + PORT]);
+const ALLOWED_ORIGINS = new Set([...ALLOWED_HOSTS].map((h) => "http://" + h));
+function isLocalRequest(req) {
+  const origin = req.headers.origin;
+  const ip = (req.socket && req.socket.remoteAddress) || "";
+  const loopback = ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
+  return loopback && ALLOWED_HOSTS.has(req.headers.host) && (!origin || ALLOWED_ORIGINS.has(origin));
+}
+app.use((req, res, next) => (isLocalRequest(req) ? next() : res.status(403).send("forbidden")));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ server, verifyClient: (info) => isLocalRequest(info.req) });
 
 // ---------- config ----------
 let config = loadConfig();
@@ -149,7 +162,11 @@ function disconnectChat() {
 app.get("/api/config", (req, res) => res.json(config));
 
 app.post("/api/config", (req, res) => {
-  config = req.body || {};
+  const body = req.body;
+  if (!body || typeof body !== "object" || Array.isArray(body) || !Object.keys(body).length) {
+    return res.status(400).json({ ok: false });
+  }
+  config = body;
   saveConfig();
   broadcast({ type: "config", config });
   res.json({ ok: true });

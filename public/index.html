@@ -314,8 +314,8 @@
       const v = t.values;
       const el = document.createElement("div");
       el.className = "theme"; el.dataset.custom = id;
-      el.innerHTML = `<b>${escapeHtml(t.label)}</b><small>ベース: ${THEMES[t.base] ? THEMES[t.base].label : t.base}</small>
-        <div class="sw"><i style="background:${v.bgColor}"></i><i style="background:${v.textColor}"></i><i style="background:${v.nameColor}"></i><i style="background:${v.memberColor}"></i></div>
+      el.innerHTML = `<b>${escapeHtml(t.label)}</b><small>ベース: ${escapeHtml(THEMES[t.base] ? THEMES[t.base].label : t.base)}</small>
+        <div class="sw"><i style="background:${safeColor(v.bgColor)}"></i><i style="background:${safeColor(v.textColor)}"></i><i style="background:${safeColor(v.nameColor)}"></i><i style="background:${safeColor(v.memberColor)}"></i></div>
         <button class="del" title="削除">✕</button>`;
       el.onclick = (e) => {
         if (e.target.classList.contains("del")) {
@@ -330,6 +330,7 @@
       box.appendChild(el);
     });
   }
+  function safeColor(c) { return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(c) ? c : "transparent"; }
   function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
   $("#btnSaveCustom").onclick = () => {
     const name = $("#customName").value.trim();
