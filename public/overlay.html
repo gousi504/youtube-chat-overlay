@@ -23,6 +23,46 @@
 
   // ---------- helpers ----------
   const { isColor, hexToRgba } = OverlayCommon;
+  // ---- superchat color tone ----
+  // YouTube's superchat colors are very bright (cyan, lime, yellow), so white text is hard to read on them.
+  // Keep the hue (so the price tier is still recognizable) but lower saturation and darken
+  // until white text reaches a readable contrast ratio.
+  function hexToHsl(hex) {
+    const h6 = hex.replace("#", ""); const n = parseInt(h6.length === 3 ? h6.split("").map(c => c + c).join("") : h6, 16);
+    const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+    let h = 0, s = 0;
+    if (d) {
+      s = d / (1 - Math.abs(2 * l - 1));
+      h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+      h = (h * 60 + 360) % 360;
+    }
+    return [h, s, l];
+  }
+  function hslToRgb(h, s, l) {
+    const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = l - c / 2;
+    const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+    return [r + m, g + m, b + m];
+  }
+  function contrastWithWhite(rgb) {
+    const lin = (v) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+    const L = 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2]);
+    return 1.05 / (L + 0.05);
+  }
+  function toneColor(hex, tone) {
+    if (tone !== "calm" && tone !== "deep") return hex; // vivid: as is
+    const maxSat = tone === "deep" ? 0.55 : 0.68, target = tone === "deep" ? 7 : 4.5;
+    let [h, s, l] = hexToHsl(hex);
+    s = Math.min(s, maxSat);
+    let rgb = hslToRgb(h, s, l);
+    while (contrastWithWhite(rgb) < target && l > 0.12) { l -= 0.01; rgb = hslToRgb(h, s, l); }
+    return "#" + rgb.map(v => Math.round(v * 255).toString(16).padStart(2, "0")).join("");
+  }
+  function paintSuperchat(el) {
+    const c = toneColor(el.dataset.sc, cfg.scTone);
+    el.style.setProperty("--sc", hexToRgba(c, "var(--sc-a,1)"));
+    el.style.setProperty("--sc-solid", c);
+  }
   function lighten(hex, amt) {
     const h = (hex || "#000").replace("#", "");
     const n = parseInt(h.length === 3 ? h.split("").map(c => c + c).join("") : h, 16);
@@ -43,6 +83,7 @@
   // ---------- apply config ----------
   function applyConfig(c) {
     cfg = OverlayCommon.apply(c, [isPreview ? "preview" : ""]);
+    list.querySelectorAll(".msg.superchat").forEach(paintSuperchat); // re-tone comments already on screen
     trim();
   }
 
@@ -66,9 +107,8 @@
     if (m.isOwner) el.classList.add("owner");
     if (m.superchat && cfg.superchatHighlight) {
       el.classList.add("superchat");
-      const scColor = isColor(m.superchat.color) ? m.superchat.color : "#1e88e5";
-      el.style.setProperty("--sc", hexToRgba(scColor, "var(--sc-a,1)"));
-      el.style.setProperty("--sc-solid", scColor);
+      el.dataset.sc = isColor(m.superchat.color) ? m.superchat.color : "#1e88e5";
+      paintSuperchat(el);
     }
 
     let html = "";
@@ -93,7 +133,7 @@
     el.innerHTML = html;
 
     list.appendChild(el);
-    setTimeout(() => el.classList.remove("new"), 600);
+    setTimeout(() => el.classList.remove("new"), 1000); // longest entry animation is 0.9s
 
     if (cfg.fadeOutSec > 0) {
       const t = setTimeout(() => remove(el), cfg.fadeOutSec * 1000);
@@ -119,12 +159,13 @@
       const t = timers.get(el);
       if (t) { clearTimeout(t); timers.delete(el); }
     }
-    // also drop anything pushed above the visible area
+    // Drop only what is completely outside. A comment that is partly outside stays and is
+    // clipped by the page edge (soft-faded by CSS), so no empty hole appears where it was.
     requestAnimationFrame(() => {
       const box = list.getBoundingClientRect();
       for (const el of Array.from(list.children)) {
         const r = el.getBoundingClientRect();
-        const outside = cfg.direction === "top" ? r.bottom > box.bottom - 8 : r.top < box.top + 8;
+        const outside = cfg.direction === "top" ? r.top >= box.bottom : r.bottom <= box.top;
         if (outside) el.remove();
       }
     });

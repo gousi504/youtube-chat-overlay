@@ -17,7 +17,7 @@
     ["fontSize", "radius", "iconSize", "gap", "padding", "width", "bgOpacity", "scOpacity", "amountSize", "maxMessages", "fadeOutSec"].forEach(k => {
       const n = Number(c[k]); c[k] = Number.isFinite(n) ? n : def[k];
     });
-    ["animation", "direction", "align", "amountStyle", "amountPos"].forEach(k => { if (!/^[a-z]+$/.test(c[k])) c[k] = def[k]; });
+    ["animation", "direction", "align", "amountStyle", "amountPos", "scTone"].forEach(k => { if (!/^[a-z]+$/.test(c[k])) c[k] = def[k]; });
     if (!FONTS.includes(c.font)) c.font = def.font;
     return c;
   }

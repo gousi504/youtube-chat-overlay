@@ -38,7 +38,12 @@
     width: var(--width);
     max-width: 100%;
   }
-  body.dir-top #list { justify-content: flex-start; flex-direction: column-reverse; }
+  body.dir-top #list { justify-content: flex-end; flex-direction: column-reverse; } /* column-reverse: flex-end = top edge */
+
+  /* the oldest comment slides out through the edge and fades, instead of vanishing in one piece */
+  body:not(.topic-page) { -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 40px); mask-image: linear-gradient(to bottom, transparent 0, #000 40px); }
+  body.dir-top:not(.topic-page) { -webkit-mask-image: linear-gradient(to top, transparent 0, #000 40px); mask-image: linear-gradient(to top, transparent 0, #000 40px); }
+  html:has(body.preview) { background: #1f2937; }
   body.align-right #list { left: auto; right: 0; align-items: flex-end; }
   body.align-right .msg { flex-direction: row-reverse; text-align: right; }
 
@@ -51,6 +56,7 @@
     border-radius: var(--radius);
     line-height: 1.4;
     word-break: break-word;
+    flex-shrink: 0;
     max-width: 100%;
     box-sizing: border-box;
     position: relative;
@@ -188,9 +194,10 @@
     box-shadow: 0 0 22px rgba(193,18,31,.25), inset 0 0 30px rgba(0,0,0,.7);
     background-image: repeating-linear-gradient(0deg, rgba(255,255,255,.025) 0 1px, transparent 1px 4px);
     clip-path: polygon(0 3%, 2% 0, 30% 1%, 55% 0, 80% 2%, 100% 0, 99% 40%, 100% 100%, 70% 98%, 40% 100%, 10% 98%, 0 100%);
-    animation: flicker 6s linear infinite;
   }
-  body.theme-horror .msg:nth-child(odd) { animation-delay: -2.7s; animation-duration: 8s; }
+  /* idle effect starts only after the entry animation is over (.new removed), so it can never override it */
+  body.theme-horror .msg:not(.new) { animation: flicker 6s linear infinite; }
+  body.theme-horror .msg:not(.new):nth-child(odd) { animation-delay: -2.7s; animation-duration: 8s; }
   body.theme-horror .icon { border-radius: 0; filter: grayscale(.85) contrast(1.2) brightness(.8); border: 1px solid rgba(193,18,31,.5); }
   body.theme-horror .name { text-shadow: 0 0 6px rgba(193,18,31,.9), 0 0 14px rgba(193,18,31,.6); letter-spacing: .08em; }
   body.theme-horror .text { text-shadow: 0 0 3px rgba(0,0,0,.9), 0 0 8px rgba(120,0,10,.5); }
@@ -270,9 +277,9 @@
     border: 1px solid rgba(255,179,71,.6);
     box-shadow: 0 0 0 1px rgba(255,179,71,.12), 0 0 14px rgba(255,160,60,.28), inset 0 0 22px rgba(255,170,70,.10);
     background-image: radial-gradient(120% 150% at 0% 0%, rgba(255,180,80,.24), transparent 60%);
-    animation: akariGlow 3.2s ease-in-out infinite alternate;
   }
-  body.theme-akari .msg:nth-child(odd) { animation-delay: -1.6s; }
+  body.theme-akari .msg:not(.new) { animation: akariGlow 3.2s ease-in-out infinite alternate; }
+  body.theme-akari .msg:not(.new):nth-child(odd) { animation-delay: -1.6s; }
   body.theme-akari .icon { border: 2px solid rgba(255,200,120,.8); box-shadow: 0 0 10px rgba(255,170,70,.6); }
   body.theme-akari .name { text-shadow: 0 0 10px rgba(255,170,70,.7); }
   body.theme-akari .name::before {

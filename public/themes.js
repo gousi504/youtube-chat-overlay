@@ -351,6 +351,7 @@ window.COMMON_DEFAULTS = {
   fadeOutSec: 0,
   superchatHighlight: true,
   scOpacity: 1, // superchat background opacity (0-1)
+  scTone: "calm", // vivid (YouTube's color as is) / calm / deep
   amountStyle: "pill", // pill / plain / invert / gold / ribbon / neon / stamp / hide
   amountPos: "inline", // inline / right / line
   amountSize: 1, // multiplier
