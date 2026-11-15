@@ -75,6 +75,20 @@
   .preview-bar .sp { flex: 1; }
   .preview-wrap { flex: 1; position: relative; background: #000; }
   .preview-wrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .topic-card { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 12px; background: var(--panel2); }
+  .topic-card summary { cursor: pointer; font-weight: 700; font-size: 14px; user-select: none; }
+  .topic-card summary small { color: var(--muted); font-weight: 400; font-size: 12px; }
+  .topic-card[open] summary { margin-bottom: 6px; }
+  .topic-card > label { display: block; margin: 10px 0 4px; color: var(--muted); font-size: 12px; }
+  .topic-card input[type=text], .topic-card textarea { background: var(--bg); }
+  .topic-card textarea { resize: vertical; min-height: 54px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
+  .chip { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); overflow: hidden; }
+  .chip button { border: 0; background: none; border-radius: 0; padding: 4px 10px; font-size: 12px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip button.x { padding: 4px 8px 4px 2px; color: var(--muted); }
+  .chip button:hover { color: var(--accent2); }
+  button.pending { box-shadow: 0 0 0 2px var(--accent2); }
+  .preview-bar select { width: auto; padding: 5px 8px; }
   .toast { position: fixed; bottom: 20px; right: 20px; background: #222a38; border: 1px solid var(--line); padding: 10px 14px; border-radius: 8px; opacity: 0; transition: .3s; pointer-events: none; }
   .toast.show { opacity: 1; }
 </style>
@@ -116,6 +130,15 @@
         <button class="small" id="btnCopy">URLをコピー</button>
       </div>
       <p class="hint" id="obsSize" style="margin-top:8px"></p>
+    </div>
+  </section>
+
+  <!-- ===== トピック枠 ===== -->
+  <section>
+    <h2>トピック枠（今日の話題など）</h2>
+    <div class="content">
+      <p class="hint">「今日のトピック」などを表示する枠。コメント欄とは別のブラウザソースとしてOBSに追加する。デザインは選択中のテーマと同じになる。<br>文字を入れて「OBSに反映」を押すと配信画面が切り替わる（押すまでは変わらない）。</p>
+      <div id="topics"></div>
     </div>
   </section>
 
@@ -240,6 +263,7 @@
 <div class="preview-area">
   <div class="preview-bar">
     <b>プレビュー</b>
+    <select id="previewSel"><option value="overlay.html?preview=1">コメント欄</option><option value="topic.html?id=1&preview=1">トピック枠 1</option><option value="topic.html?id=2&preview=1">トピック枠 2</option><option value="topic.html?id=3&preview=1">トピック枠 3</option></select>
     <span class="hint" style="margin:0">テストコメントを流して見た目を確認</span>
     <span class="sp"></span>
     <button class="small" data-test="normal">通常</button>
@@ -397,6 +421,94 @@
   });
   $$("section > h2").forEach(h => h.onclick = () => h.parentElement.classList.toggle("closed"));
 
+  // ---------- topic frames ----------
+  $("#previewSel").onchange = (e) => { $("#preview").src = e.target.value; };
+  function renderTopics() {
+    const wrap = $("#topics");
+    wrap.innerHTML = "";
+    cfg.topics.forEach((t, i) => {
+      const url = location.origin + "/topic.html?id=" + (i + 1);
+      const card = document.createElement("details");
+      card.className = "topic-card";
+      card.open = i === 0 || !!t.text;
+      card.innerHTML = `
+        <summary>枠 ${i + 1}<small data-t="sum"></small></summary>
+        <div class="row"><label>OBSに表示する</label><div class="ctl"><div class="toggle" data-t="show"></div></div></div>
+        <label>見出し（空でもOK）</label>
+        <input type="text" data-t="label" maxlength="60" placeholder="例: 今日のトピック">
+        <label>内容</label>
+        <textarea data-t="text" maxlength="300" rows="2" placeholder="例: 雑談しながらお絵かき"></textarea>
+        <div class="btns" style="margin-top:8px">
+          <button class="primary" data-t="apply">OBSに反映</button>
+          <button class="small" data-t="savePreset">この内容を定型文に保存</button>
+        </div>
+        <label>定型文（押すとすぐ反映）</label>
+        <div class="chips" data-t="chips"></div>
+        <div class="row"><label>文字の位置</label><div class="ctl"><select data-t="align"><option value="left">左寄せ</option><option value="center">中央</option><option value="right">右寄せ</option></select></div></div>
+        <div class="row"><label>文字サイズ</label><div class="ctl"><input type="range" min="12" max="96" data-t="size"><span class="val"></span></div></div>
+        <label>OBSに貼るURL（この枠専用）</label>
+        <div class="url-box"></div>
+        <div class="btns" style="margin-top:8px">
+          <button class="small" data-t="copy">URLをコピー</button>
+          <button class="small" data-t="preview">右のプレビューで見る</button>
+        </div>`;
+      const q = (k) => card.querySelector('[data-t="' + k + '"]');
+      const label = q("label"), text = q("text"), apply = q("apply"), size = q("size"), show = q("show");
+      label.value = t.label; text.value = t.text;
+      card.querySelector(".url-box").textContent = url;
+      show.classList.toggle("on", t.show);
+      size.value = t.size; size.parentElement.querySelector(".val").textContent = t.size + "px";
+
+      const sum = () => { q("sum").textContent = "　" + (cfg.topics[i].show ? "" : "［非表示］") + (cfg.topics[i].label || "（見出しなし）"); };
+      sum();
+      const pending = () => apply.classList.toggle("pending", label.value !== cfg.topics[i].label || text.value !== cfg.topics[i].text);
+      const commit = () => {
+        cfg.topics[i].label = label.value; cfg.topics[i].text = text.value;
+        pending(); sum(); save(); toast("枠 " + (i + 1) + " を反映した");
+      };
+      label.oninput = pending; text.oninput = pending;
+      label.onkeydown = (e) => { if (e.key === "Enter") commit(); };
+      apply.onclick = commit;
+      show.onclick = () => { cfg.topics[i].show = !cfg.topics[i].show; show.classList.toggle("on", cfg.topics[i].show); sum(); save(); };
+      q("align").value = t.align;
+      q("align").onchange = (e) => { cfg.topics[i].align = e.target.value; save(); };
+      size.oninput = () => { cfg.topics[i].size = Number(size.value); size.parentElement.querySelector(".val").textContent = size.value + "px"; save(); };
+      q("copy").onclick = async () => {
+        try { await navigator.clipboard.writeText(url); toast("コピーした"); } catch { toast("コピー失敗。手で選択して"); }
+      };
+      q("preview").onclick = () => { const s = $("#previewSel"); s.value = "topic.html?id=" + (i + 1) + "&preview=1"; s.onchange({ target: s }); };
+      q("savePreset").onclick = () => {
+        const v = text.value.trim();
+        if (!v) return toast("内容が空");
+        if (cfg.topicPresets.includes(v)) return toast("もう保存済み");
+        if (cfg.topicPresets.length >= 30) return toast("定型文は30個まで");
+        cfg.topicPresets.push(v); save(); renderChips(); toast("定型文に保存した");
+      };
+      card._setText = (v) => { text.value = v; commit(); };
+      wrap.appendChild(card);
+    });
+    renderChips();
+  }
+  function renderChips() {
+    $$("#topics .topic-card").forEach((card) => {
+      const box = card.querySelector('[data-t="chips"]');
+      box.innerHTML = "";
+      if (!cfg.topicPresets.length) { box.innerHTML = '<span class="hint" style="margin:0">まだ無い。内容を書いて「定型文に保存」を押す</span>'; return; }
+      cfg.topicPresets.forEach((p, n) => {
+        const chip = document.createElement("span");
+        chip.className = "chip";
+        const use = document.createElement("button");
+        use.textContent = p; use.title = p;
+        use.onclick = () => card._setText(p);
+        const del = document.createElement("button");
+        del.className = "x"; del.textContent = "✕"; del.title = "この定型文を削除";
+        del.onclick = () => { cfg.topicPresets.splice(n, 1); save(); renderChips(); };
+        chip.appendChild(use); chip.appendChild(del);
+        box.appendChild(chip);
+      });
+    });
+  }
+
   // ---------- save (debounced) ----------
   let saveT;
   function save() {
@@ -445,7 +557,7 @@
   $("#btnImport").onclick = () => $("#fileImport").click();
   $("#fileImport").onchange = async (e) => {
     const f = e.target.files[0]; if (!f) return;
-    try { cfg = buildConfig(JSON.parse(await f.text())); renderCustomThemes(); fill(); save(); toast("読み込んだ"); }
+    try { cfg = buildConfig(JSON.parse(await f.text())); renderCustomThemes(); renderTopics(); fill(); save(); toast("読み込んだ"); }
     catch { toast("読み込み失敗"); }
     e.target.value = "";
   };
@@ -466,6 +578,7 @@
     const c = await fetch("/api/config").then(r => r.json());
     cfg = buildConfig(c);
     renderCustomThemes();
+    renderTopics();
     fill();
     ws();
   })();

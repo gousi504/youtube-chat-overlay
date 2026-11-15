@@ -26,6 +26,16 @@ OBS 用の YouTube ライブチャット表示ツール。API キー不要。Win
 
 終わるときは黒い窓を閉じる。
 
+## トピック枠（今日の話題などを表示）
+
+「今日のトピック」「現在の状況」などを表示する枠。3つまで使える。デザインは選択中のテーマと同じになる。
+
+1. 設定画面の「トピック枠」で、使いたい枠の「OBSに貼るURL」をコピー
+2. OBS → ソース「＋」→「ブラウザ」→ URL に貼る。幅 600 / 高さ 200 くらい（枠はソースの幅いっぱいに広がる）
+3. 見出しと内容を入力して「OBSに反映」を押す
+
+よく使う内容は「定型文に保存」しておくと、ボタン1つで切り替えられる。
+
 ## 更新のしかた
 
 1. 黒い窓（start.bat）を閉じる
@@ -40,7 +50,9 @@ OBS 用の YouTube ライブチャット表示ツール。API キー不要。Win
 - `update.bat` : 最新版に更新
 - `server.js` : コメント取得サーバー（Node.js）
 - `public/index.html` : 設定画面
-- `public/overlay.html` : OBS に映すページ
+- `public/overlay.html` : OBS に映すページ（コメント欄）
+- `public/topic.html` : OBS に映すページ（トピック枠）
+- `public/overlay.css` / `public/common.js` : 2つのページ共通の見た目と処理
 - `public/themes.js` : テーマの初期値
 - `config.json` : 保存された設定（自動生成。消すと初期状態に戻る）
 - `runtime/node.exe` : 同梱の Node.js（MIT License）

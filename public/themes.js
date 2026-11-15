@@ -383,13 +383,40 @@ window.FONTS = [
 // keys that make up a "look" (saved into custom themes)
 window.VISUAL_KEYS = ["font","fontSize","textColor","nameColor","bgColor","bgOpacity","radius","shadow","outline","showIcon","showName","showTime","showBadge","iconSize","gap","padding","animation","memberColor","modColor","ownerColor","width","direction","align"];
 
+// ---- topic frames ("今日のトピック" etc.) ----
+window.TOPIC_COUNT = 3;
+window.TOPIC_DEFAULT_LABELS = ["今日のトピック", "現在の状況", "次の予定"];
+window.TOPIC_DEFAULT_PRESETS = ["準備中", "休憩中", "雑談中", "ゲーム中"];
+
+// Always returns a fresh, valid array of TOPIC_COUNT frames.
+window.normalizeTopics = function (a) {
+  return window.TOPIC_DEFAULT_LABELS.map((label, i) => {
+    const s = (Array.isArray(a) && a[i] && typeof a[i] === "object") ? a[i] : {};
+    const size = Number(s.size);
+    return {
+      label: typeof s.label === "string" ? s.label.slice(0, 60) : label,
+      text: typeof s.text === "string" ? s.text.slice(0, 300) : "",
+      show: s.show !== false,
+      size: Number.isFinite(size) ? Math.min(96, Math.max(12, size)) : 32,
+      align: ["left", "center", "right"].includes(s.align) ? s.align : "left",
+    };
+  });
+};
+window.normalizePresets = function (a) {
+  if (!Array.isArray(a)) return window.TOPIC_DEFAULT_PRESETS.slice();
+  return a.filter(x => typeof x === "string" && x.trim()).map(x => x.slice(0, 300)).slice(0, 30);
+};
+
 window.buildConfig = function (cfg) {
   const theme = window.THEMES[cfg && cfg.theme] ? cfg.theme : "simple";
-  return Object.assign(
+  const out = Object.assign(
     {},
     window.COMMON_DEFAULTS,
     window.THEMES[theme].defaults,
     cfg || {},
     { theme }
   );
+  out.topics = window.normalizeTopics(out.topics);
+  out.topicPresets = window.normalizePresets(out.topicPresets);
+  return out;
 };
