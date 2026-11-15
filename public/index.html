@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YouTube Chat Overlay 設定</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f1218; --panel: #171b24; --panel2: #1f2531; --line: #2b3242;
+    --text: #e6e9f0; --muted: #8b93a7; --accent: #ff4d6d; --accent2: #4dd0ff; --ok: #3ddc84; --warn: #ffb020;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Noto Sans JP", system-ui, sans-serif; font-size: 14px; }
+  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 10; }
+  header h1 { font-size: 16px; margin: 0; letter-spacing: .04em; }
+  header h1 span { color: var(--accent); }
+  .status { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-left: auto; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #555; }
+  .dot.on { background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+  .dot.err { background: var(--accent); }
+
+  main { display: grid; grid-template-columns: 400px 1fr; gap: 0; min-height: calc(100vh - 53px); }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } .preview-wrap { height: 420px; } }
+  aside { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; height: calc(100vh - 53px); }
+  @media (max-width: 900px) { aside { height: auto; } }
+
+  section { border-bottom: 1px solid var(--line); }
+  section > h2 { margin: 0; padding: 12px 18px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; cursor: pointer; display: flex; justify-content: space-between; user-select: none; }
+  section > h2::after { content: "−"; }
+  section.closed > h2::after { content: "+"; }
+  section.closed .content { display: none; }
+  .content { padding: 4px 18px 16px; }
+
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 0; }
+  .row label { color: var(--text); flex: 0 0 auto; }
+  .row .ctl { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; justify-content: flex-end; }
+  .hint { color: var(--muted); font-size: 12px; margin: 2px 0 8px; line-height: 1.6; }
+  input[type=text], input[type=number], select, textarea {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; font: inherit; width: 100%;
+  }
+  input[type=number] { width: 80px; }
+  input[type=range] { flex: 1; accent-color: var(--accent2); }
+  input[type=color] { width: 36px; height: 30px; border: 1px solid var(--line); background: var(--panel2); border-radius: 6px; padding: 2px; }
+  textarea { min-height: 70px; resize: vertical; }
+  .val { min-width: 42px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .toggle { position: relative; width: 42px; height: 24px; background: #3a4356; border-radius: 999px; cursor: pointer; transition: .2s; flex: 0 0 auto; }
+  .toggle::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; background: #fff; border-radius: 50%; transition: .2s; }
+  .toggle.on { background: var(--accent2); }
+  .toggle.on::after { left: 21px; }
+
+  button { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px 14px; font: inherit; cursor: pointer; }
+  button:hover { border-color: var(--accent2); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+  button.primary:hover { filter: brightness(1.1); }
+  button.small { padding: 5px 10px; font-size: 12px; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  .themes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .theme { border: 2px solid var(--line); border-radius: 10px; padding: 10px 12px; cursor: pointer; background: var(--panel2); transition: .15s; }
+  .theme:hover { border-color: #46506a; }
+  .theme.active { border-color: var(--accent); background: #2a1b22; }
+  .theme b { display: block; font-size: 14px; }
+  .theme small { color: var(--muted); font-size: 11px; }
+  .theme .sw { display: flex; gap: 4px; margin-top: 8px; }
+  .theme .sw i { width: 16px; height: 16px; border-radius: 4px; display: block; border: 1px solid #0006; }
+  .theme { position: relative; }
+  .theme .del { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 50%; padding: 0; font-size: 12px; line-height: 20px; color: var(--muted); }
+  .theme .del:hover { color: #fff; background: var(--accent); border-color: var(--accent); }
+
+  .url-box { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font-family: monospace; font-size: 13px; word-break: break-all; color: var(--accent2); user-select: all; }
+
+  .preview-area { display: flex; flex-direction: column; }
+  .preview-bar { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+  .preview-bar .sp { flex: 1; }
+  .preview-wrap { flex: 1; position: relative; background: #000; }
+  .preview-wrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .toast { position: fixed; bottom: 20px; right: 20px; background: #222a38; border: 1px solid var(--line); padding: 10px 14px; border-radius: 8px; opacity: 0; transition: .3s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>YouTube <span>Chat Overlay</span></h1>
+  <div class="status"><span class="dot" id="dot"></span><span id="statusText">未接続</span></div>
+</header>
+
+<main>
+<aside>
+
+  <!-- ===== 接続 ===== -->
+  <section>
+    <h2>1. YouTube に接続</h2>
+    <div class="content">
+      <p class="hint">配信中の動画URL、またはチャンネルURL（@ハンドル可）を貼る。チャンネルURLの場合は今やっている配信を自動で探す。</p>
+      <input type="text" id="url" placeholder="https://www.youtube.com/watch?v=xxxxxxxxxxx">
+      <div class="row">
+        <label>起動時に自動で接続</label>
+        <div class="ctl"><div class="toggle" data-key="autoConnect"></div></div>
+      </div>
+      <div class="btns" style="margin-top:6px">
+        <button class="primary" id="btnConnect">接続</button>
+        <button id="btnDisconnect">切断</button>
+      </div>
+      <p class="hint" id="connHint" style="margin-top:8px"></p>
+    </div>
+  </section>
+
+  <!-- ===== OBS ===== -->
+  <section>
+    <h2>2. OBS に貼る URL</h2>
+    <div class="content">
+      <p class="hint">OBSで「ソース」＋ → 「ブラウザ」を追加し、URL欄にこれを貼る。幅と高さは下の値を推奨。</p>
+      <div class="url-box" id="obsUrl"></div>
+      <div class="btns" style="margin-top:8px">
+        <button class="small" id="btnCopy">URLをコピー</button>
+      </div>
+      <p class="hint" id="obsSize" style="margin-top:8px"></p>
+    </div>
+  </section>
+
+  <!-- ===== テーマ ===== -->
+  <section>
+    <h2>3. デザインテーマ</h2>
+    <div class="content">
+      <div class="themes" id="themes"></div>
+      <p class="hint" style="margin-top:8px">テーマを選ぶと下の細かい設定がそのテーマの初期値に戻る。</p>
+      <h3 style="font-size:13px;color:var(--muted);margin:14px 0 6px">マイテーマ</h3>
+      <div class="themes" id="customThemes"></div>
+      <p class="hint" id="noCustom" style="margin-top:4px">まだ保存したテーマはない。下の設定をいじった後、名前を付けて保存できる。</p>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <input type="text" id="customName" placeholder="テーマ名（例: 夜配信用）" maxlength="20">
+        <button class="small" id="btnSaveCustom" style="white-space:nowrap">現在の設定を保存</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 文字 ===== -->
+  <section>
+    <h2>文字</h2>
+    <div class="content">
+      <div class="row"><label>フォント</label><div class="ctl"><select data-key="font" id="fontSel"></select></div></div>
+      <div class="row"><label>文字サイズ</label><div class="ctl"><input type="range" min="12" max="60" data-key="fontSize"><span class="val"></span></div></div>
+      <div class="row"><label>本文の色</label><div class="ctl"><input type="color" data-key="textColor"></div></div>
+      <div class="row"><label>名前の色</label><div class="ctl"><input type="color" data-key="nameColor"></div></div>
+      <div class="row"><label>文字の縁取り</label><div class="ctl"><div class="toggle" data-key="outline"></div></div></div>
+    </div>
+  </section>
+
+  <!-- ===== 背景・形 ===== -->
+  <section>
+    <h2>背景・形</h2>
+    <div class="content">
+      <div class="row"><label>背景色</label><div class="ctl"><input type="color" data-key="bgColor"></div></div>
+      <div class="row"><label>背景の濃さ</label><div class="ctl"><input type="range" min="0" max="1" step="0.05" data-key="bgOpacity"><span class="val"></span></div></div>
+      <div class="row"><label>角の丸み</label><div class="ctl"><input type="range" min="0" max="40" data-key="radius"><span class="val"></span></div></div>
+      <div class="row"><label>内側の余白</label><div class="ctl"><input type="range" min="0" max="30" data-key="padding"><span class="val"></span></div></div>
+      <div class="row"><label>コメント間の間隔</label><div class="ctl"><input type="range" min="0" max="40" data-key="gap"><span class="val"></span></div></div>
+      <div class="row"><label>影</label><div class="ctl"><div class="toggle" data-key="shadow"></div></div></div>
+    </div>
+  </section>
+
+  <!-- ===== 表示 ===== -->
+  <section>
+    <h2>表示する要素</h2>
+    <div class="content">
+      <div class="row"><label>アイコン</label><div class="ctl"><div class="toggle" data-key="showIcon"></div></div></div>
+      <div class="row"><label>アイコンサイズ</label><div class="ctl"><input type="range" min="16" max="80" data-key="iconSize"><span class="val"></span></div></div>
+      <div class="row"><label>名前</label><div class="ctl"><div class="toggle" data-key="showName"></div></div></div>
+      <div class="row"><label>メンバーバッジ</label><div class="ctl"><div class="toggle" data-key="showBadge"></div></div></div>
+      <div class="row"><label>時刻</label><div class="ctl"><div class="toggle" data-key="showTime"></div></div></div>
+      <div class="row"><label>スパチャを強調</label><div class="ctl"><div class="toggle" data-key="superchatHighlight"></div></div></div>
+      <div class="row"><label>スパチャ背景の濃さ</label><div class="ctl"><input type="range" min="0" max="1" step="0.05" data-key="scOpacity"><span class="val"></span></div></div>
+      <div class="row"><label>スパチャ金額のデザイン</label><div class="ctl">
+        <select data-key="amountStyle"><option value="pill">丸ラベル（標準）</option><option value="plain">文字だけ</option><option value="invert">白ラベル</option><option value="gold">ゴールド（きらっと光る）</option><option value="ribbon">リボン</option><option value="neon">ネオン（光る枠）</option><option value="stamp">スタンプ（ななめ）</option><option value="hide">表示しない</option></select></div></div>
+      <div class="row"><label>スパチャ金額の位置</label><div class="ctl">
+        <select data-key="amountPos"><option value="inline">名前の横</option><option value="right">右端（上下中央）</option><option value="line">名前の下に1行で</option></select></div></div>
+      <div class="row"><label>スパチャ金額の大きさ</label><div class="ctl"><input type="range" min="0.6" max="3" step="0.1" data-key="amountSize"><span class="val"></span></div></div>
+    </div>
+  </section>
+
+  <!-- ===== レイアウト ===== -->
+  <section>
+    <h2>レイアウト・動き</h2>
+    <div class="content">
+      <div class="row"><label>表示幅</label><div class="ctl"><input type="range" min="200" max="1200" step="10" data-key="width"><span class="val"></span></div></div>
+      <div class="row"><label>新着の位置</label><div class="ctl">
+        <select data-key="direction"><option value="bottom">下に追加（上へ流れる）</option><option value="top">上に追加（下へ流れる）</option></select>
+      </div></div>
+      <div class="row"><label>寄せ</label><div class="ctl">
+        <select data-key="align"><option value="left">左寄せ</option><option value="right">右寄せ</option></select>
+      </div></div>
+      <div class="row"><label>登場アニメ</label><div class="ctl">
+        <select data-key="animation"><option value="slide">スライド</option><option value="fade">フェード</option><option value="pop">ポップ</option><option value="blur">にじむ</option><option value="none">なし</option></select>
+      </div></div>
+      <div class="row"><label>最大表示数</label><div class="ctl"><input type="range" min="1" max="40" data-key="maxMessages"><span class="val"></span></div></div>
+      <div class="row"><label>自動で消す（秒）</label><div class="ctl"><input type="range" min="0" max="120" step="5" data-key="fadeOutSec"><span class="val"></span></div></div>
+      <p class="hint">「自動で消す」が 0 なら消えない（上限数を超えた分だけ消える）。</p>
+    </div>
+  </section>
+
+  <!-- ===== 色分け ===== -->
+  <section class="closed">
+    <h2>ユーザー種別の色</h2>
+    <div class="content">
+      <div class="row"><label>メンバー</label><div class="ctl"><input type="color" data-key="memberColor"></div></div>
+      <div class="row"><label>モデレーター</label><div class="ctl"><input type="color" data-key="modColor"></div></div>
+      <div class="row"><label>配信者</label><div class="ctl"><input type="color" data-key="ownerColor"></div></div>
+      <div class="row"><label>配信者のコメントを隠す</label><div class="ctl"><div class="toggle" data-key="hideOwner"></div></div></div>
+    </div>
+  </section>
+
+  <!-- ===== NG ===== -->
+  <section class="closed">
+    <h2>NG設定</h2>
+    <div class="content">
+      <p class="hint">改行またはカンマ区切りで複数指定。</p>
+      <label>NGワード（含むコメントを非表示）</label>
+      <textarea data-key="ngWords" placeholder="例: 宣伝&#10;http"></textarea>
+      <label style="display:block;margin-top:10px">NGユーザー（表示名）</label>
+      <textarea data-key="ngUsers" placeholder="例: 荒らしさん"></textarea>
+    </div>
+  </section>
+
+  <!-- ===== バックアップ ===== -->
+  <section class="closed">
+    <h2>設定の保存・復元</h2>
+    <div class="content">
+      <div class="btns">
+        <button class="small" id="btnExport">書き出し（ファイル保存）</button>
+        <button class="small" id="btnImport">読み込み</button>
+        <button class="small" id="btnReset">テーマ初期値に戻す</button>
+      </div>
+      <input type="file" id="fileImport" accept=".json" hidden>
+    </div>
+  </section>
+
+</aside>
+
+<div class="preview-area">
+  <div class="preview-bar">
+    <b>プレビュー</b>
+    <span class="hint" style="margin:0">テストコメントを流して見た目を確認</span>
+    <span class="sp"></span>
+    <button class="small" data-test="normal">通常</button>
+    <button class="small" data-test="member">メンバー</button>
+    <button class="small" data-test="moderator">モデレーター</button>
+    <button class="small" data-test="owner">配信者</button>
+    <button class="small" data-test="superchat">スパチャ</button>
+    <button class="small" data-test="long">長文</button>
+    <button class="small" id="btnAuto">連続テスト</button>
+    <button class="small" id="btnClear">全消去</button>
+  </div>
+  <div class="preview-wrap">
+    <iframe id="preview" src="overlay.html?preview=1"></iframe>
+  </div>
+</div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script src="themes.js"></script>
+<script>
+(function () {
+  let cfg = buildConfig({});
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => Array.from(document.querySelectorAll(s));
+
+  // ---------- toast ----------
+  let toastT;
+  function toast(msg) {
+    const t = $("#toast");
+    t.textContent = msg; t.classList.add("show");
+    clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 1800);
+  }
+
+  // ---------- OBS url ----------
+  const obsUrl = location.origin + "/overlay.html";
+  $("#obsUrl").textContent = obsUrl;
+  $("#btnCopy").onclick = async () => {
+    try { await navigator.clipboard.writeText(obsUrl); toast("コピーした"); }
+    catch { toast("コピー失敗。手で選択して"); }
+  };
+  function updateObsSize() {
+    $("#obsSize").textContent = `推奨サイズ: 幅 ${cfg.width}  高さ 800 以上（縦に長いほど多く表示）`;
+  }
+
+  // ---------- fonts ----------
+  const fontSel = $("#fontSel");
+  FONTS.forEach(f => { const o = document.createElement("option"); o.value = f; o.textContent = f; fontSel.appendChild(o); });
+
+  // ---------- themes ----------
+  const themesEl = $("#themes");
+  Object.entries(THEMES).forEach(([key, t]) => {
+    const d = t.defaults;
+    const el = document.createElement("div");
+    el.className = "theme"; el.dataset.theme = key;
+    el.innerHTML = `<b>${t.label}</b><small>${t.desc}</small>
+      <div class="sw"><i style="background:${d.bgColor}"></i><i style="background:${d.textColor}"></i><i style="background:${d.nameColor}"></i><i style="background:${d.memberColor}"></i></div>`;
+    el.onclick = () => {
+      cfg = buildConfig(Object.assign({}, cfg, { theme: key }, THEMES[key].defaults, { activeCustom: null }));
+      fill(); save();
+    };
+    themesEl.appendChild(el);
+  });
+
+  // ---------- custom themes ----------
+  function renderCustomThemes() {
+    const box = $("#customThemes");
+    box.innerHTML = "";
+    const list = Object.entries(cfg.customThemes || {});
+    $("#noCustom").hidden = list.length > 0;
+    list.forEach(([id, t]) => {
+      const v = t.values;
+      const el = document.createElement("div");
+      el.className = "theme"; el.dataset.custom = id;
+      el.innerHTML = `<b>${escapeHtml(t.label)}</b><small>ベース: ${THEMES[t.base] ? THEMES[t.base].label : t.base}</small>
+        <div class="sw"><i style="background:${v.bgColor}"></i><i style="background:${v.textColor}"></i><i style="background:${v.nameColor}"></i><i style="background:${v.memberColor}"></i></div>
+        <button class="del" title="削除">✕</button>`;
+      el.onclick = (e) => {
+        if (e.target.classList.contains("del")) {
+          delete cfg.customThemes[id];
+          if (cfg.activeCustom === id) cfg.activeCustom = null;
+          renderCustomThemes(); fill(); save(); toast("削除した");
+          return;
+        }
+        cfg = buildConfig(Object.assign({}, cfg, { theme: t.base }, v, { activeCustom: id }));
+        fill(); save();
+      };
+      box.appendChild(el);
+    });
+  }
+  function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+  $("#btnSaveCustom").onclick = () => {
+    const name = $("#customName").value.trim();
+    if (!name) return toast("テーマ名を入れて");
+    const values = {};
+    VISUAL_KEYS.forEach(k => values[k] = cfg[k]);
+    cfg.customThemes = cfg.customThemes || {};
+    const existing = Object.entries(cfg.customThemes).find(([, t]) => t.label === name);
+    const id = existing ? existing[0] : "c" + Date.now();
+    cfg.customThemes[id] = { label: name, base: cfg.theme, values };
+    cfg.activeCustom = id;
+    $("#customName").value = "";
+    renderCustomThemes(); fill(); save();
+    toast(existing ? "上書き保存した" : "保存した");
+  };
+  function markDirty(k) {
+    if (cfg.activeCustom && VISUAL_KEYS.includes(k)) {
+      cfg.activeCustom = null;
+      $$(".theme[data-custom]").forEach(e => e.classList.remove("active"));
+    }
+  }
+
+  // ---------- fill controls from cfg ----------
+  function fill() {
+    $$(".theme[data-theme]").forEach(e => e.classList.toggle("active", !cfg.activeCustom && e.dataset.theme === cfg.theme));
+    $$(".theme[data-custom]").forEach(e => e.classList.toggle("active", e.dataset.custom === cfg.activeCustom));
+    $$("[data-key]").forEach(el => {
+      const k = el.dataset.key;
+      const v = cfg[k];
+      if (el.classList.contains("toggle")) el.classList.toggle("on", !!v);
+      else if (el.type === "range") { el.value = v; showVal(el); }
+      else el.value = v == null ? "" : v;
+    });
+    $("#url").value = cfg.lastUrl || "";
+    updateObsSize();
+  }
+  function showVal(el) {
+    const s = el.parentElement.querySelector(".val");
+    if (!s) return;
+    const k = el.dataset.key;
+    let v = el.value;
+    if (k === "bgOpacity" || k === "scOpacity" || k === "amountSize") v = Math.round(v * 100) + "%";
+    else if (k === "fadeOutSec") v = v === "0" ? "なし" : v + "秒";
+    else if (["fontSize", "radius", "padding", "gap", "iconSize", "width"].includes(k)) v = v + "px";
+    s.textContent = v;
+  }
+
+  // ---------- events ----------
+  $$("[data-key]").forEach(el => {
+    const k = el.dataset.key;
+    if (el.classList.contains("toggle")) {
+      el.onclick = () => { cfg[k] = !cfg[k]; el.classList.toggle("on", cfg[k]); markDirty(k); save(); };
+    } else {
+      const ev = (el.type === "range" || el.type === "color" || el.tagName === "TEXTAREA") ? "input" : "change";
+      el.addEventListener(ev, () => {
+        let v = el.value;
+        if (el.type === "range" || el.type === "number") v = Number(v);
+        cfg[k] = v;
+        if (el.type === "range") showVal(el);
+        if (k === "width") updateObsSize();
+        markDirty(k); save();
+      });
+    }
+  });
+  $$("section > h2").forEach(h => h.onclick = () => h.parentElement.classList.toggle("closed"));
+
+  // ---------- save (debounced) ----------
+  let saveT;
+  function save() {
+    clearTimeout(saveT);
+    saveT = setTimeout(async () => {
+      await fetch("/api/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cfg) });
+    }, 150);
+  }
+
+  // ---------- connect ----------
+  $("#btnConnect").onclick = async () => {
+    const url = $("#url").value.trim();
+    if (!url) return toast("URLを入れて");
+    cfg.lastUrl = url; save();
+    $("#connHint").textContent = "接続中……";
+    const r = await fetch("/api/connect", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) }).then(r => r.json());
+    if (!r.ok) $("#connHint").textContent = "接続失敗: " + (r.status.error || "配信が見つからない。配信中か確認して");
+    else $("#connHint").textContent = "";
+  };
+  $("#btnDisconnect").onclick = () => fetch("/api/disconnect", { method: "POST" });
+
+  function showStatus(s) {
+    const dot = $("#dot");
+    dot.className = "dot " + (s.connected ? "on" : s.error ? "err" : "");
+    $("#statusText").textContent = s.connected ? "接続中: " + s.liveId : s.error ? "エラー: " + s.error : "未接続";
+  }
+
+  // ---------- test ----------
+  $$("[data-test]").forEach(b => b.onclick = () => fetch("/api/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: b.dataset.test }) }));
+  $("#btnClear").onclick = () => fetch("/api/clear", { method: "POST" });
+  let autoT = null;
+  $("#btnAuto").onclick = function () {
+    if (autoT) { clearInterval(autoT); autoT = null; this.textContent = "連続テスト"; return; }
+    this.textContent = "停止";
+    const kinds = ["normal", "normal", "long", "member", "normal", "moderator", "superchat", "long"];
+    let i = 0;
+    autoT = setInterval(() => fetch("/api/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: kinds[i++ % kinds.length] }) }), 1500);
+  };
+
+  // ---------- export / import / reset ----------
+  $("#btnExport").onclick = () => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(cfg, null, 2)], { type: "application/json" }));
+    a.download = "chat-overlay-settings.json"; a.click();
+  };
+  $("#btnImport").onclick = () => $("#fileImport").click();
+  $("#fileImport").onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    try { cfg = buildConfig(JSON.parse(await f.text())); renderCustomThemes(); fill(); save(); toast("読み込んだ"); }
+    catch { toast("読み込み失敗"); }
+    e.target.value = "";
+  };
+  $("#btnReset").onclick = () => {
+    cfg = buildConfig(Object.assign({}, cfg, THEMES[cfg.theme].defaults, { activeCustom: null }));
+    fill(); save(); toast("初期値に戻した");
+  };
+
+  // ---------- websocket for status ----------
+  function ws() {
+    const s = new WebSocket((location.protocol === "https:" ? "wss" : "ws") + "://" + location.host);
+    s.onmessage = (ev) => { const d = JSON.parse(ev.data); if (d.type === "status") showStatus(d.status); };
+    s.onclose = () => setTimeout(ws, 2000);
+  }
+
+  // ---------- init ----------
+  (async () => {
+    const c = await fetch("/api/config").then(r => r.json());
+    cfg = buildConfig(c);
+    renderCustomThemes();
+    fill();
+    ws();
+  })();
+})();
+</script>
+</body>
+</html>

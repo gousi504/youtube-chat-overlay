@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>Chat Overlay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Zen+Maru+Gothic:wght@500;700;900&family=M+PLUS+Rounded+1c:wght@500;800&family=Kosugi+Maru&family=DotGothic16&family=Shippori+Mincho:wght@500;700&family=Noto+Serif+JP:wght@500;700&family=Zen+Kaku+Gothic+New:wght@500;700&family=Kaisei+Decol:wght@500;700&family=Yusei+Magic&family=Dela+Gothic+One&family=RocknRoll+One&family=Yuji+Syuku&family=Yuji+Boku&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font: "Noto Sans JP";
+    --font-size: 26px;
+    --text: #fff;
+    --name: #9ad8ff;
+    --bg: rgba(0,0,0,0);
+    --bg-solid: #000;
+    --radius: 8px;
+    --icon: 40px;
+    --gap: 10px;
+    --pad: 6px;
+    --width: 480px;
+    --member: #2ba640;
+    --mod: #5e84f1;
+    --owner: #ffd600;
+    --accent: var(--name);
+  }
+  html, body {
+    margin: 0; padding: 0;
+    background: transparent;
+    overflow: hidden;
+    width: 100%; height: 100%;
+  }
+  body.preview { background: #1f2937 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Crect width='20' height='20' fill='%23273244'/%3E%3Crect x='20' y='20' width='20' height='20' fill='%23273244'/%3E%3C/svg%3E"); }
+
+  #list {
+    position: absolute;
+    left: 0; right: 0; top: 0; bottom: 0;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: var(--gap);
+    box-sizing: border-box;
+    font-family: var(--font), "Noto Sans JP", sans-serif;
+    font-size: var(--font-size);
+    color: var(--text);
+    width: var(--width);
+    max-width: 100%;
+  }
+  body.dir-top #list { justify-content: flex-start; flex-direction: column-reverse; }
+  body.align-right #list { left: auto; right: 0; align-items: flex-end; }
+  body.align-right .msg { flex-direction: row-reverse; text-align: right; }
+
+  .msg {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: var(--pad) calc(var(--pad) + 6px);
+    background: var(--bg);
+    border-radius: var(--radius);
+    line-height: 1.4;
+    word-break: break-word;
+    max-width: 100%;
+    box-sizing: border-box;
+    position: relative;
+  }
+  .icon {
+    width: var(--icon); height: var(--icon);
+    border-radius: 50%;
+    flex: 0 0 auto;
+    object-fit: cover;
+    background: #8886;
+  }
+  .body { min-width: 0; flex: 1 1 auto; }
+  .head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 0.8em; }
+  body.align-right .head { justify-content: flex-end; }
+  .name { color: var(--name); font-weight: 700; }
+  .msg.member .name { color: var(--member); }
+  .msg.moderator .name { color: var(--mod); }
+  .msg.owner .name { color: var(--owner); }
+  .badge { height: 1.1em; vertical-align: middle; }
+  .time { opacity: .6; font-size: .85em; }
+  .text { display: block; }
+  .text img.emoji { height: 1.3em; vertical-align: -0.3em; margin: 0 1px; }
+  .sticker { display: block; height: 3em; margin-top: 4px; }
+
+  body.outline .name, body.outline .text, body.outline .time {
+    text-shadow:
+      -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000,
+      -2px 0 0 #000, 2px 0 0 #000, 0 -2px 0 #000, 0 2px 0 #000;
+    paint-order: stroke fill;
+  }
+  body.shadow .msg { box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+
+  /* superchat */
+  .msg.superchat { background: var(--sc, #1e88e5); color: #fff; }
+  .msg.superchat .name, .msg.superchat .time { color: #fff; opacity: .95; }
+  .amount { font-weight: 900; margin-left: 4px; background: rgba(0,0,0,.25); padding: 0 8px; border-radius: 999px; }
+
+  /* ---- animations ---- */
+  @keyframes slideIn { from { opacity: 0; transform: translateX(-30px); } to { opacity: 1; transform: none; } }
+  @keyframes slideInR { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: none; } }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes popIn { 0% { opacity: 0; transform: scale(.6); } 70% { transform: scale(1.06); } 100% { opacity: 1; transform: scale(1); } }
+  @keyframes fadeOut { to { opacity: 0; transform: translateY(-10px); } }
+  body.anim-slide .msg.new { animation: slideIn .35s cubic-bezier(.2,.8,.2,1) both; }
+  body.anim-slide.align-right .msg.new { animation-name: slideInR; }
+  body.anim-fade .msg.new { animation: fadeIn .5s ease both; }
+  body.anim-pop .msg.new { animation: popIn .4s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes blurIn { 0% { opacity: 0; filter: blur(10px); transform: scale(1.04); } 100% { opacity: 1; filter: blur(0); transform: none; } }
+  body.anim-blur .msg.new { animation: blurIn .9s ease-out both; }
+  .msg.out { animation: fadeOut .6s ease forwards !important; }
+
+  /* ================= THEME: simple ================= */
+  body.theme-simple .msg { padding: 2px 4px; }
+
+  /* ================= THEME: cute ================= */
+  body.theme-cute .msg {
+    border: 3px solid #fff;
+    box-shadow: 0 6px 0 rgba(255, 150, 190, .35), 0 8px 20px rgba(0,0,0,.12);
+    margin-left: 6px;
+  }
+  body.theme-cute .msg::before {
+    content: "";
+    position: absolute;
+    left: -14px; top: 18px;
+    border: 8px solid transparent;
+    border-right: 10px solid #fff;
+  }
+  body.theme-cute.align-right .msg { margin-left: 0; margin-right: 6px; }
+  body.theme-cute.align-right .msg::before { left: auto; right: -14px; border-right-color: transparent; border-left: 10px solid #fff; }
+  body.theme-cute .icon { border: 3px solid #fff; box-shadow: 0 2px 6px rgba(255,120,170,.4); }
+  body.theme-cute .name {
+    background: var(--accent-bg, #ffe1ec);
+    color: var(--name);
+    padding: 0 10px;
+    border-radius: 999px;
+    font-weight: 900;
+  }
+  body.theme-cute .msg.member .name { background: #dff5ec; }
+  body.theme-cute .msg.moderator .name { background: #e3eaff; }
+  body.theme-cute .msg.owner .name { background: #ffecd2; }
+  body.theme-cute .name::before { content: "♥ "; font-size: .8em; }
+  body.theme-cute .msg.superchat { border-color: #fff; color: #fff; }
+  body.theme-cute .msg.superchat .name { background: rgba(255,255,255,.3); color: #fff; }
+
+  /* ================= THEME: game ================= */
+  body.theme-game .msg {
+    border-left: 4px solid var(--accent);
+    clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+    box-shadow: inset 0 0 0 1px rgba(0,229,255,.25), 0 0 18px rgba(0,229,255,.15);
+    background-image: repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 1px, transparent 1px 3px);
+  }
+  body.theme-game .msg.member { border-left-color: var(--member); }
+  body.theme-game .msg.moderator { border-left-color: var(--mod); }
+  body.theme-game .msg.owner { border-left-color: var(--owner); }
+  body.theme-game .icon { border-radius: 4px; border: 1px solid var(--accent); }
+  body.theme-game .name { text-shadow: 0 0 8px currentColor; letter-spacing: .04em; text-transform: uppercase; }
+  body.theme-game .name::before { content: "▶ "; font-size: .7em; }
+  body.theme-game .time { font-family: monospace; color: var(--accent); opacity: .8; }
+  body.theme-game .msg.superchat { border-left-color: #fff; box-shadow: 0 0 24px var(--sc); }
+
+  /* ================= THEME: cafe ================= */
+  body.theme-cafe .msg {
+    border: 2px solid rgba(107,143,94,.35);
+    box-shadow: 0 4px 12px rgba(90,70,40,.15);
+    background-image: radial-gradient(rgba(107,143,94,.10) 1px, transparent 1.5px);
+    background-size: 12px 12px;
+  }
+  body.theme-cafe .msg::after {
+    content: "";
+    position: absolute;
+    inset: 4px;
+    border: 1px dashed rgba(107,143,94,.45);
+    border-radius: calc(var(--radius) - 4px);
+    pointer-events: none;
+  }
+  body.theme-cafe .icon { border: 3px solid #fff; box-shadow: 0 2px 6px rgba(90,70,40,.25); }
+  body.theme-cafe .name { font-weight: 700; }
+  body.theme-cafe .name::before { content: "❧ "; opacity: .7; font-size: .85em; }
+  body.theme-cafe .time { color: var(--name); opacity: .7; }
+  body.theme-cafe .msg.superchat { color: #fff; background-image: none; border-color: #fff; }
+  body.theme-cafe .msg.superchat .name { color: #fff; }
+  body.theme-cafe .msg.superchat::after { border-color: rgba(255,255,255,.6); }
+
+  /* ================= THEME: horror ================= */
+  @keyframes flicker {
+    0%, 100% { opacity: 1; }
+    92% { opacity: 1; }
+    93% { opacity: .35; }
+    94% { opacity: 1; }
+    97% { opacity: .6; }
+    98% { opacity: 1; }
+  }
+  body.theme-horror .msg {
+    border: 1px solid rgba(193,18,31,.35);
+    box-shadow: 0 0 22px rgba(193,18,31,.25), inset 0 0 30px rgba(0,0,0,.7);
+    background-image: repeating-linear-gradient(0deg, rgba(255,255,255,.025) 0 1px, transparent 1px 4px);
+    clip-path: polygon(0 3%, 2% 0, 30% 1%, 55% 0, 80% 2%, 100% 0, 99% 40%, 100% 100%, 70% 98%, 40% 100%, 10% 98%, 0 100%);
+    animation: flicker 6s linear infinite;
+  }
+  body.theme-horror .msg:nth-child(odd) { animation-delay: -2.7s; animation-duration: 8s; }
+  body.theme-horror .icon { border-radius: 0; filter: grayscale(.85) contrast(1.2) brightness(.8); border: 1px solid rgba(193,18,31,.5); }
+  body.theme-horror .name { text-shadow: 0 0 6px rgba(193,18,31,.9), 0 0 14px rgba(193,18,31,.6); letter-spacing: .08em; }
+  body.theme-horror .text { text-shadow: 0 0 3px rgba(0,0,0,.9), 0 0 8px rgba(120,0,10,.5); }
+  body.theme-horror .time { color: var(--name); opacity: .6; }
+  body.theme-horror .msg.superchat { border-color: #fff; box-shadow: 0 0 30px var(--sc); }
+
+  /* ================= THEME: note ================= */
+  body.theme-note .msg {
+    border: 1px solid rgba(120,90,60,.25);
+    box-shadow: 0 2px 0 rgba(120,90,60,.15), 0 6px 14px rgba(0,0,0,.12);
+    background-image: repeating-linear-gradient(180deg, transparent 0 calc(1.4em - 1px), rgba(120,90,60,.14) calc(1.4em - 1px) 1.4em);
+    background-origin: content-box;
+    transform: rotate(-0.4deg);
+  }
+  body.theme-note .msg:nth-child(even) { transform: rotate(0.5deg); }
+  body.theme-note .msg::before {
+    content: "";
+    position: absolute;
+    top: -8px; left: 50%;
+    width: 52px; height: 16px;
+    transform: translateX(-50%) rotate(-3deg);
+    background: rgba(255,225,140,.75);
+    box-shadow: 0 1px 2px rgba(0,0,0,.15);
+  }
+  body.theme-note .icon { border-radius: 6px; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); transform: rotate(-4deg); }
+  body.theme-note .name { text-decoration: underline wavy; text-underline-offset: 3px; }
+  body.theme-note .time { font-size: .75em; }
+  body.theme-note .msg.superchat { color: #fff; background-image: none; }
+  body.theme-note .msg.superchat .name { color: #fff; }
+
+  /* ================= THEME: chic ================= */
+  body.theme-chic .msg {
+    border-bottom: 1px solid rgba(212,181,122,.45);
+    padding-bottom: calc(var(--pad) + 4px);
+    letter-spacing: .02em;
+  }
+  body.theme-chic .msg::after {
+    content: "";
+    position: absolute;
+    left: 0; bottom: -1px;
+    width: 42px; height: 1px;
+    background: var(--name);
+  }
+  body.theme-chic.align-right .msg::after { left: auto; right: 0; }
+  body.theme-chic .icon { border-radius: 50%; border: 1px solid rgba(212,181,122,.6); filter: saturate(.8); }
+  body.theme-chic .name { font-weight: 500; letter-spacing: .12em; }
+  body.theme-chic .name:not(:last-child)::after { content: ""; display: inline-block; width: 18px; height: 1px; background: currentColor; margin: 0 4px 0 10px; vertical-align: middle; opacity: .6; }
+  body.theme-chic .text { font-weight: 500; }
+  body.theme-chic .msg.superchat { border-bottom-color: #fff; }
+
+  /* ================= THEME: wood ================= */
+  body.theme-wood .msg {
+    padding-left: calc(var(--pad) + 18px); padding-right: calc(var(--pad) + 18px);
+    border: 2px solid rgba(40,22,10,.6);
+    box-shadow: inset 0 2px 0 rgba(255,220,170,.22), inset 0 -3px 0 rgba(0,0,0,.25), 0 5px 12px rgba(0,0,0,.35);
+    background-image:
+      repeating-linear-gradient(178deg, rgba(255,230,190,.07) 0 2px, transparent 2px 7px, rgba(0,0,0,.08) 7px 8px, transparent 8px 13px),
+      linear-gradient(90deg, rgba(0,0,0,.12), transparent 18%, transparent 82%, rgba(0,0,0,.12));
+  }
+  body.theme-wood .msg::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background:
+      radial-gradient(circle 3.5px at 10px 50%, rgba(25,12,4,.75) 96%, transparent),
+      radial-gradient(circle 3.5px at calc(100% - 10px) 50%, rgba(25,12,4,.75) 96%, transparent);
+  }
+  body.theme-wood .icon { border: 2px solid rgba(40,22,10,.7); box-shadow: 0 2px 4px rgba(0,0,0,.35); }
+  body.theme-wood .name, body.theme-wood .text { text-shadow: 0 2px 0 rgba(30,15,5,.55); }
+  body.theme-wood .name { letter-spacing: .06em; }
+  body.theme-wood .msg.superchat { border-color: rgba(255,255,255,.7); }
+
+  /* ================= THEME: akari ================= */
+  @keyframes akariGlow {
+    from { box-shadow: 0 0 0 1px rgba(255,179,71,.12), 0 0 14px rgba(255,160,60,.28), inset 0 0 22px rgba(255,170,70,.10); }
+    to   { box-shadow: 0 0 0 1px rgba(255,179,71,.18), 0 0 24px rgba(255,160,60,.48), inset 0 0 26px rgba(255,170,70,.18); }
+  }
+  body.theme-akari .msg {
+    border: 1px solid rgba(255,179,71,.6);
+    box-shadow: 0 0 0 1px rgba(255,179,71,.12), 0 0 14px rgba(255,160,60,.28), inset 0 0 22px rgba(255,170,70,.10);
+    background-image: radial-gradient(120% 150% at 0% 0%, rgba(255,180,80,.24), transparent 60%);
+    animation: akariGlow 3.2s ease-in-out infinite alternate;
+  }
+  body.theme-akari .msg:nth-child(odd) { animation-delay: -1.6s; }
+  body.theme-akari .icon { border: 2px solid rgba(255,200,120,.8); box-shadow: 0 0 10px rgba(255,170,70,.6); }
+  body.theme-akari .name { text-shadow: 0 0 10px rgba(255,170,70,.7); }
+  body.theme-akari .name::before {
+    content: ""; display: inline-block; width: .5em; height: .5em; border-radius: 50%;
+    background: #fff3c4; box-shadow: 0 0 6px 2px rgba(255,190,90,.9); margin-right: .45em; vertical-align: .12em;
+  }
+  body.theme-akari .text { text-shadow: 0 1px 3px rgba(0,0,0,.5); }
+  body.theme-akari .msg.superchat { border-color: rgba(255,255,255,.8); }
+
+  /* ================= THEME: yozora ================= */
+  @keyframes twinkle { 0%, 100% { opacity: .9; } 50% { opacity: .25; } }
+  body.theme-yozora .msg {
+    border: 1px solid rgba(160,185,255,.4);
+    box-shadow: 0 6px 20px rgba(10,15,50,.45), inset 0 1px 0 rgba(255,255,255,.14);
+    background-image: linear-gradient(160deg, rgba(100,120,230,.32), rgba(40,20,90,.0) 70%);
+  }
+  body.theme-yozora .msg::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+    background:
+      radial-gradient(circle 1.6px at 88% 24%, #fff 60%, transparent),
+      radial-gradient(circle 1.1px at 95% 62%, #fff 60%, transparent),
+      radial-gradient(circle 1.3px at 78% 78%, #ffe9a3 60%, transparent),
+      radial-gradient(circle 1px at 70% 16%, #fff 60%, transparent),
+      radial-gradient(circle 1.8px at 97% 30%, #cfe0ff 60%, transparent),
+      radial-gradient(circle 1px at 58% 88%, #fff 60%, transparent),
+      radial-gradient(circle 1.2px at 46% 10%, #fff 60%, transparent);
+    animation: twinkle 4.5s ease-in-out infinite;
+  }
+  body.theme-yozora .msg:nth-child(odd)::after { animation-delay: -2.2s; transform: scaleX(-1); }
+  body.theme-yozora .icon { border: 1px solid rgba(200,215,255,.7); box-shadow: 0 0 10px rgba(140,165,255,.5); }
+  body.theme-yozora .name { letter-spacing: .06em; text-shadow: 0 0 10px rgba(255,233,163,.45); }
+  body.theme-yozora .name::before {
+    content: ""; display: inline-block; width: .42em; height: .42em; transform: rotate(45deg);
+    background: currentColor; box-shadow: 0 0 6px currentColor; margin-right: .5em; vertical-align: .14em;
+  }
+  body.theme-yozora .msg.superchat { border-color: rgba(255,255,255,.75); }
+
+  /* ================= THEME: glass ================= */
+  body.theme-glass .msg {
+    border: 1px solid rgba(255,255,255,.6);
+    box-shadow: 0 8px 24px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.65);
+    background-image:
+      linear-gradient(135deg, rgba(255,255,255,.34), rgba(255,255,255,0) 42%),
+      linear-gradient(rgba(20,30,50,.30), rgba(20,30,50,.30));
+  }
+  body.theme-glass .icon { border: 2px solid rgba(255,255,255,.8); }
+  body.theme-glass .name, body.theme-glass .text, body.theme-glass .time { text-shadow: 0 1px 4px rgba(0,0,0,.6); }
+  body.theme-glass .name { letter-spacing: .04em; }
+
+  /* ================= THEME: pop ================= */
+  body.theme-pop #list { padding-right: 24px; padding-bottom: 22px; }
+  body.theme-pop .msg {
+    border: 3px solid #1a1a1a;
+    box-shadow: 5px 5px 0 #1a1a1a;
+    background-image: radial-gradient(rgba(0,0,0,.09) 1.5px, transparent 2px);
+    background-size: 10px 10px;
+    transform: rotate(-.6deg);
+  }
+  body.theme-pop .msg:nth-child(even) { transform: rotate(.6deg); }
+  body.theme-pop .icon { border: 3px solid #1a1a1a; }
+  body.theme-pop .name {
+    background: #1a1a1a; padding: 1px 10px; border-radius: 4px;
+    transform: rotate(-2deg); display: inline-block;
+  }
+  body.theme-pop .head { margin-bottom: 3px; }
+  body.theme-pop .amount { background: #fff; color: #1a1a1a; border: 2px solid #1a1a1a; }
+
+  /* ================= THEME: wafu ================= */
+  body.theme-wafu .msg {
+    padding-left: calc(var(--pad) + 14px);
+    border: 1px solid rgba(60,40,20,.3);
+    box-shadow: 0 4px 12px rgba(40,25,10,.28);
+    background-image:
+      linear-gradient(90deg, #b3312a 0 5px, transparent 5px),
+      repeating-linear-gradient(90deg, rgba(120,90,50,.06) 0 1px, transparent 1px 5px),
+      repeating-linear-gradient(0deg, rgba(120,90,50,.04) 0 1px, transparent 1px 7px);
+  }
+  body.theme-wafu .msg::after {
+    content: ""; position: absolute; left: 10px; right: 5px; top: 4px; bottom: 4px; pointer-events: none;
+    border-top: 1px solid rgba(179,49,42,.4); border-bottom: 1px solid rgba(179,49,42,.4);
+  }
+  body.theme-wafu.align-right .msg { padding-left: calc(var(--pad) + 6px); padding-right: calc(var(--pad) + 14px); background-image: linear-gradient(270deg, #b3312a 0 5px, transparent 5px), repeating-linear-gradient(90deg, rgba(120,90,50,.06) 0 1px, transparent 1px 5px); }
+  body.theme-wafu.align-right .msg::after { left: 5px; right: 10px; }
+  body.theme-wafu .icon { border-radius: 4px; border: 1px solid rgba(60,40,20,.5); }
+  body.theme-wafu .name { letter-spacing: .1em; }
+  body.theme-wafu .name::before {
+    content: ""; display: inline-block; width: .55em; height: .55em; border-radius: 50%;
+    background: #b3312a; margin-right: .45em; vertical-align: .08em;
+  }
+  body.theme-wafu .msg.superchat { background-image: linear-gradient(90deg, rgba(255,255,255,.85) 0 5px, transparent 5px); }
+  body.theme-wafu .msg.superchat::after { border-color: rgba(255,255,255,.55); }
+  body.theme-wafu .msg.superchat .name::before { background: #fff; }
+
+  /* ================= superchat amount options (must stay last) ================= */
+  .amount { font-size: calc(var(--amt-size, 1) * 1em); line-height: 1.35; white-space: nowrap; }
+  body.amt-plain .amount { background: none; border: 0; padding: 0; color: inherit; border-radius: 0; }
+  body.amt-invert .amount { background: #fff; border: 0; color: var(--sc-solid, #1e88e5); }
+  body.amt-hide .amount { display: none; }
+  .amount.side { display: none; flex: 0 0 auto; align-self: center; margin-left: 0; font-size: calc(var(--amt-size, 1) * .8em); }
+  body.amtpos-right .head .amount { display: none; }
+  body.amtpos-right:not(.amt-hide) .amount.side { display: block; }
+
+  /* rich amount designs */
+  @keyframes amtShine { 0% { background-position: 100% 0, 0 0; } 55%, 100% { background-position: 0% 0, 0 0; } }
+  body.amt-gold .amount {
+    background:
+      linear-gradient(110deg, transparent 38%, rgba(255,255,255,.9) 50%, transparent 62%) 100% 0 / 250% 100% no-repeat,
+      linear-gradient(180deg, #fff6c9, #f3c84b 45%, #c98a12);
+    color: #5a3600; border: 1px solid #fff3b0; border-radius: 8px; padding: 0 .55em;
+    box-shadow: 0 2px 0 #8a5a00, 0 0 12px rgba(255,210,90,.65);
+    text-shadow: 0 1px 0 rgba(255,255,255,.65);
+    animation: amtShine 3.2s ease-in-out infinite;
+  }
+  body.amt-ribbon .amount {
+    background: linear-gradient(180deg, #ffffff, #e6ebf2); color: var(--sc-solid, #1e88e5);
+    border: 0; border-radius: 0; padding: .05em 1em;
+    clip-path: polygon(0 0, 100% 0, calc(100% - .5em) 50%, 100% 100%, 0 100%, .5em 50%);
+  }
+  body.amt-neon .amount {
+    background: rgba(0,0,0,.28); color: #fff; border: 2px solid rgba(255,255,255,.9); border-radius: 10px; padding: 0 .5em;
+    box-shadow: 0 0 10px rgba(255,255,255,.75), inset 0 0 10px rgba(255,255,255,.35);
+    text-shadow: 0 0 6px #fff, 0 0 14px rgba(255,255,255,.8);
+    letter-spacing: .04em;
+  }
+  body.amt-stamp .amount {
+    background: rgba(255,255,255,.14); color: #fff; border: 4px double #fff; border-radius: 6px; padding: 0 .45em;
+    transform: rotate(-5deg); letter-spacing: .06em;
+    text-shadow: 0 1px 2px rgba(0,0,0,.35);
+  }
+  body.amtpos-line .head::after { content: ""; flex-basis: 100%; order: 1; }
+  body.amtpos-line .amount { order: 2; margin-left: 0; }
+  body.amtpos-line .head { row-gap: 0; }
+  body.theme-chic.amtpos-line .msg.superchat .name::after, body.theme-chic.amtpos-right .msg.superchat .name::after, body.theme-chic.amt-hide .msg.superchat .name::after { display: none; }
+</style>
+</head>
+<body class="theme-simple anim-slide outline dir-bottom align-left">
+<div id="list"></div>
+<script src="themes.js"></script>
+<script>
+(function () {
+  const params = new URLSearchParams(location.search);
+  const isPreview = params.get("preview") === "1";
+  if (isPreview) document.body.classList.add("preview");
+
+  const list = document.getElementById("list");
+  let cfg = buildConfig({});
+  const timers = new Map();
+
+  // ---------- helpers ----------
+  function hexToRgba(hex, a) {
+    const h = (hex || "#000").replace("#", "");
+    const n = parseInt(h.length === 3 ? h.split("").map(c => c + c).join("") : h, 16);
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    return `rgba(${r},${g},${b},${a})`;
+  }
+  function lighten(hex, amt) {
+    const h = (hex || "#000").replace("#", "");
+    const n = parseInt(h.length === 3 ? h.split("").map(c => c + c).join("") : h, 16);
+    const r = Math.min(255, ((n >> 16) & 255) + amt), g = Math.min(255, ((n >> 8) & 255) + amt), b = Math.min(255, (n & 255) + amt);
+    return `rgb(${r},${g},${b})`;
+  }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+  function fmtTime(ts) {
+    const d = new Date(ts);
+    return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  }
+  function splitList(s) {
+    return String(s || "").split(/[\n,、，]/).map(x => x.trim()).filter(Boolean);
+  }
+
+  // ---------- apply config ----------
+  function applyConfig(c) {
+    cfg = buildConfig(c);
+    const r = document.documentElement.style;
+    r.setProperty("--font", `"${cfg.font}"`);
+    r.setProperty("--font-size", cfg.fontSize + "px");
+    r.setProperty("--text", cfg.textColor);
+    r.setProperty("--name", cfg.nameColor);
+    r.setProperty("--accent", cfg.nameColor);
+    r.setProperty("--accent-bg", hexToRgba(cfg.nameColor, 0.18));
+    r.setProperty("--bg", hexToRgba(cfg.bgColor, cfg.bgOpacity));
+    r.setProperty("--bg-solid", cfg.bgColor);
+    r.setProperty("--radius", cfg.radius + "px");
+    r.setProperty("--icon", cfg.iconSize + "px");
+    r.setProperty("--gap", cfg.gap + "px");
+    r.setProperty("--pad", cfg.padding + "px");
+    r.setProperty("--width", cfg.width + "px");
+    r.setProperty("--member", cfg.memberColor);
+    r.setProperty("--mod", cfg.modColor);
+    r.setProperty("--owner", cfg.ownerColor);
+    r.setProperty("--sc-a", cfg.scOpacity);
+    r.setProperty("--amt-size", cfg.amountSize);
+
+    const b = document.body;
+    b.className = [
+      isPreview ? "preview" : "",
+      "theme-" + cfg.theme,
+      "anim-" + cfg.animation,
+      cfg.outline ? "outline" : "",
+      cfg.shadow ? "shadow" : "",
+      "dir-" + cfg.direction,
+      "align-" + cfg.align,
+      "amt-" + cfg.amountStyle,
+      "amtpos-" + cfg.amountPos,
+    ].filter(Boolean).join(" ");
+
+    trim();
+  }
+
+  // ---------- render ----------
+  function isBlocked(m) {
+    const words = splitList(cfg.ngWords);
+    const users = splitList(cfg.ngUsers);
+    if (cfg.hideOwner && m.isOwner) return true;
+    if (users.some(u => m.author.name === u || m.author.channelId === u)) return true;
+    const text = m.message.map(p => p.text || p.alt || "").join("");
+    if (words.some(w => text.includes(w))) return true;
+    return false;
+  }
+
+  function render(m) {
+    if (isBlocked(m)) return;
+    const el = document.createElement("div");
+    el.className = "msg new";
+    if (m.isMembership) el.classList.add("member");
+    if (m.isModerator) el.classList.add("moderator");
+    if (m.isOwner) el.classList.add("owner");
+    if (m.superchat && cfg.superchatHighlight) {
+      el.classList.add("superchat");
+      el.style.setProperty("--sc", hexToRgba(m.superchat.color || "#1e88e5", "var(--sc-a,1)"));
+      el.style.setProperty("--sc-solid", m.superchat.color || "#1e88e5");
+    }
+
+    let html = "";
+    if (cfg.showIcon && m.author.icon) {
+      html += `<img class="icon" src="${esc(m.author.icon)}" alt="" onerror="this.style.visibility='hidden'">`;
+    }
+    html += `<div class="body">`;
+    const head = [];
+    if (cfg.showName) head.push(`<span class="name">${esc(m.author.name)}</span>`);
+    if (cfg.showBadge && m.author.badge) head.push(`<img class="badge" src="${esc(m.author.badge)}" alt="">`);
+    if (m.superchat) head.push(`<span class="amount">${esc(m.superchat.amount)}</span>`);
+    if (cfg.showTime) head.push(`<span class="time">${fmtTime(m.timestamp)}</span>`);
+    if (head.length) html += `<div class="head">${head.join("")}</div>`;
+    const text = m.message.map(p =>
+      p.emoji ? `<img class="emoji" src="${esc(p.emoji)}" alt="${esc(p.alt)}">` : esc(p.text)
+    ).join("");
+    if (text) html += `<span class="text">${text}</span>`;
+    if (m.superchat && m.superchat.sticker) html += `<img class="sticker" src="${esc(m.superchat.sticker)}" alt="">`;
+    html += `</div>`;
+    // second copy of the amount, shown only when position = right edge
+    if (m.superchat) html += `<span class="amount side">${esc(m.superchat.amount)}</span>`;
+    el.innerHTML = html;
+
+    list.appendChild(el);
+    setTimeout(() => el.classList.remove("new"), 600);
+
+    if (cfg.fadeOutSec > 0) {
+      const t = setTimeout(() => remove(el), cfg.fadeOutSec * 1000);
+      timers.set(el, t);
+    }
+    trim();
+  }
+
+  function remove(el) {
+    if (!el.isConnected) return;
+    el.classList.add("out");
+    setTimeout(() => el.remove(), 600);
+    const t = timers.get(el);
+    if (t) { clearTimeout(t); timers.delete(el); }
+  }
+
+  function trim() {
+    const items = Array.from(list.children).filter(e => !e.classList.contains("out"));
+    const over = items.length - cfg.maxMessages;
+    for (let i = 0; i < over; i++) {
+      const el = items[i];
+      el.remove(); // oldest disappear instantly to keep layout tidy
+      const t = timers.get(el);
+      if (t) { clearTimeout(t); timers.delete(el); }
+    }
+    // also drop anything pushed above the visible area
+    requestAnimationFrame(() => {
+      const box = list.getBoundingClientRect();
+      for (const el of Array.from(list.children)) {
+        const r = el.getBoundingClientRect();
+        const outside = cfg.direction === "top" ? r.bottom > box.bottom - 8 : r.top < box.top + 8;
+        if (outside) el.remove();
+      }
+    });
+  }
+
+  function clearAll() {
+    list.innerHTML = "";
+    timers.forEach(t => clearTimeout(t));
+    timers.clear();
+  }
+
+  // ---------- websocket ----------
+  function connect() {
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    const ws = new WebSocket(`${proto}://${location.host}`);
+    ws.onmessage = (ev) => {
+      let d;
+      try { d = JSON.parse(ev.data); } catch { return; }
+      if (d.type === "config") applyConfig(d.config);
+      else if (d.type === "chat") render(d);
+      else if (d.type === "clear") clearAll();
+    };
+    ws.onclose = () => setTimeout(connect, 2000);
+    ws.onerror = () => ws.close();
+  }
+
+  applyConfig({});
+  connect();
+})();
+</script>
+</body>
+</html>
