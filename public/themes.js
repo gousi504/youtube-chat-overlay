@@ -355,6 +355,8 @@ window.COMMON_DEFAULTS = {
   amountStyle: "pill", // pill / plain / invert / gold / ribbon / neon / stamp / hide
   amountPos: "inline", // inline / right / line
   amountSize: 1, // multiplier
+  firstEffect: "off", // first-time viewer effect: off / badge / glow
+  firstLabel: "初見さん いらっしゃい！",
   ngWords: "",
   ngUsers: "",
   hideOwner: false,

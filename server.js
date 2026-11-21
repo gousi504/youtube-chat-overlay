@@ -6,9 +6,13 @@ const path = require("path");
 const fs = require("fs");
 const { WebSocketServer } = require("ws");
 const { LiveChat } = require("youtube-chat");
+const { createLedger } = require("./viewers");
 
 const PORT = Number(process.env.PORT) || 3456;
-const CONFIG_PATH = path.join(__dirname, "config.json");
+// where config.json / viewers.json live (the tool's own folder unless overridden for testing)
+const DATA_DIR = process.env.YCO_DATA_DIR || __dirname;
+const CONFIG_PATH = path.join(DATA_DIR, "config.json");
+const ledger = createLedger(DATA_DIR);
 
 const app = express();
 
@@ -24,11 +28,16 @@ function isLocalRequest(req) {
   return loopback && ALLOWED_HOSTS.has(req.headers.host) && (!origin || ALLOWED_ORIGINS.has(origin));
 }
 app.use((req, res, next) => (isLocalRequest(req) ? next() : res.status(403).send("forbidden")));
-app.use(express.json({ limit: "1mb" }));
+const jsonSmall = express.json({ limit: "1mb" });
+const jsonLarge = express.json({ limit: "30mb" }); // only for restoring a viewer-ledger backup
+app.use((req, res, next) => (req.path === "/api/viewers/import" ? jsonLarge : jsonSmall)(req, res, next));
 app.use(express.static(path.join(__dirname, "public")));
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, verifyClient: (info) => isLocalRequest(info.req) });
+// The management page connects with ?role=admin. Only those connections receive viewer-ledger
+// data (nicknames, memos, visit counts). The pages shown in OBS never get it.
+const isAdminSocket = (ws) => ws.isAdmin === true;
 
 // ---------- config ----------
 let config = loadConfig();
@@ -49,6 +58,35 @@ function broadcast(obj) {
   const data = JSON.stringify(obj);
   for (const ws of wss.clients) {
     if (ws.readyState === 1) ws.send(data);
+  }
+}
+function broadcastAdmin(obj) {
+  const data = JSON.stringify(obj);
+  for (const ws of wss.clients) {
+    if (ws.readyState === 1 && isAdminSocket(ws)) ws.send(data);
+  }
+}
+
+// ---------- chat pipeline ----------
+// Every comment (real or test) goes through here: update the ledger, remember it for the
+// management page, then send it out. `first` (= first comment ever from this person) goes to
+// everyone; the ledger details go to the management page only.
+const RECENT_MAX = 300;
+const recent = [];
+function handleChat(m, opts) {
+  const o = opts || {};
+  let viewer = null;
+  if (!o.skipLedger && m.author.channelId) {
+    const r = ledger.record(m.author.channelId, m.author.name, m.author.icon, o.liveId || status.liveId, Date.now());
+    viewer = r.viewer;
+    m.first = r.first && !m.isOwner && !o.noFirst;
+  }
+  recent.push(m);
+  if (recent.length > RECENT_MAX) recent.shift();
+  const plain = JSON.stringify(m);
+  const rich = JSON.stringify(Object.assign({}, m, { viewer }));
+  for (const ws of wss.clients) {
+    if (ws.readyState === 1) ws.send(isAdminSocket(ws) ? rich : plain);
   }
 }
 
@@ -135,7 +173,7 @@ async function connectChat(input) {
   });
   liveChat.on("chat", (item) => {
     try {
-      broadcast(toPlainChat(item));
+      handleChat(toPlainChat(item));
     } catch (e) {
       console.error("[chat] parse error:", e);
     }
@@ -201,13 +239,14 @@ app.post("/api/test", (req, res) => {
     "ナイスプレイ",
   ];
   const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  const name = pick(names);
   const item = {
     type: "chat",
     id: "test-" + Date.now() + "-" + Math.random().toString(36).slice(2),
     author: {
-      name: pick(names),
-      icon: `https://api.dicebear.com/9.x/thumbs/svg?seed=${Math.floor(Math.random() * 1000)}`,
-      channelId: "test",
+      name,
+      icon: `https://api.dicebear.com/9.x/thumbs/svg?seed=${names.indexOf(name) + 1}`,
+      channelId: "test-" + name, // test people get their own ledger entries so the management page can be tried
       badge: null,
     },
     message: [{ text: pick(texts) }],
@@ -232,6 +271,16 @@ app.post("/api/test", (req, res) => {
   if (kind === "owner") {
     item.isOwner = true;
     item.author.name = "配信者";
+    item.author.channelId = "test-配信者";
+  }
+  // "first": shows the first-time-viewer effect without touching the ledger
+  if (kind === "first") {
+    item.author.name = "はじめてさん";
+    item.author.channelId = "test-first";
+    item.message = [{ text: "初見です、よろしく" }];
+    item.first = true;
+    handleChat(item, { skipLedger: true });
+    return res.json({ ok: true });
   }
   if (kind === "superchat") {
     const tiers = [
@@ -247,7 +296,7 @@ app.post("/api/test", (req, res) => {
     item.superchat = { amount: t[0], color: t[1], sticker: null };
     item.message = [{ text: "応援してます！" }];
   }
-  broadcast(item);
+  handleChat(item, { liveId: "test", noFirst: true });
   res.json({ ok: true });
 });
 
@@ -256,8 +305,47 @@ app.post("/api/clear", (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- viewer ledger API (used by the management page only) ----------
+app.get("/api/viewers", (req, res) => res.json({ viewers: ledger.list(), stats: ledger.stats() }));
+
+app.get("/api/recent", (req, res) =>
+  res.json({ items: recent.map((m) => Object.assign({}, m, { viewer: ledger.view(m.author.channelId) })) })
+);
+
+app.post("/api/viewers/update", (req, res) => {
+  const b = req.body || {};
+  const patch = {};
+  if (typeof b.alias === "string") patch.alias = b.alias;
+  if (typeof b.memo === "string") patch.memo = b.memo;
+  const viewer = typeof b.id === "string" ? ledger.update(b.id, patch) : null;
+  if (!viewer) return res.status(404).json({ ok: false });
+  broadcastAdmin({ type: "viewer", viewer });
+  res.json({ ok: true, viewer });
+});
+
+app.post("/api/viewers/delete", (req, res) => {
+  const b = req.body || {};
+  if (b.tests === true) ledger.removeTests();
+  else if (typeof b.id !== "string" || !ledger.remove(b.id)) return res.status(404).json({ ok: false });
+  broadcastAdmin({ type: "viewers-changed" });
+  res.json({ ok: true });
+});
+
+app.get("/api/viewers/export", (req, res) => res.json(ledger.exportAll()));
+
+app.post("/api/viewers/import", (req, res) => {
+  try {
+    const stats = ledger.importAll(req.body);
+    broadcastAdmin({ type: "viewers-changed" });
+    res.json({ ok: true, stats });
+  } catch {
+    res.status(400).json({ ok: false });
+  }
+});
+
 // ---------- websocket ----------
-wss.on("connection", (ws) => {
+wss.on("connection", (ws, req) => {
+  ws.isAdmin = /[?&]role=admin(&|$)/.test(req.url || "");
   ws.send(JSON.stringify({ type: "config", config }));
   ws.send(JSON.stringify({ type: "status", status }));
 });
@@ -268,6 +356,7 @@ server.listen(PORT, () => {
   console.log("  YouTube Chat Overlay");
   console.log("  設定画面 : http://localhost:" + PORT + "/");
   console.log("  OBS用URL : http://localhost:" + PORT + "/overlay.html");
+  console.log("  コメント管理 : http://localhost:" + PORT + "/viewers.html");
   console.log("==========================================");
   console.log("");
   if (config.autoConnect && config.lastUrl) {
@@ -275,3 +364,10 @@ server.listen(PORT, () => {
     connectChat(config.lastUrl);
   }
 });
+
+// ---------- shutdown ----------
+// Write the viewer ledger before the process ends (Ctrl+C, or closing the black window).
+for (const sig of ["SIGINT", "SIGTERM", "SIGHUP", "SIGBREAK"]) {
+  process.on(sig, () => { ledger.flush(); process.exit(0); });
+}
+process.on("exit", () => ledger.flush());

@@ -14,7 +14,7 @@ const version = require(path.join(root, "package.json")).version;
 fs.rmSync(dist, { recursive: true, force: true });
 fs.mkdirSync(path.join(stage, "runtime"), { recursive: true });
 
-for (const f of ["server.js", "package.json", "package-lock.json", "start.bat", "update.bat", "README.md"]) {
+for (const f of ["server.js", "viewers.js", "package.json", "package-lock.json", "start.bat", "update.bat", "README.md"]) {
   fs.copyFileSync(path.join(root, f), path.join(stage, f));
 }
 fs.cpSync(path.join(root, "public"), path.join(stage, "public"), { recursive: true });
@@ -24,7 +24,9 @@ fs.writeFileSync(path.join(stage, "version.txt"), "v" + version + "\r\n");
 execSync("npm ci --omit=dev --no-audit --no-fund", { cwd: stage, stdio: "inherit" });
 
 // never ship personal settings
-if (fs.existsSync(path.join(stage, "config.json"))) throw new Error("config.json must not be in the package");
+for (const f of fs.readdirSync(stage)) {
+  if (f === "config.json" || /^viewers.*\.json/.test(f)) throw new Error(f + " must not be in the package");
+}
 
 execFileSync("C:\\Windows\\System32\\tar.exe", ["-a", "-cf", zip, "-C", dist, name], { stdio: "inherit" });
 console.log("built:", zip, (fs.statSync(zip).size / 1048576).toFixed(1) + " MB", "v" + version, "node " + process.version);

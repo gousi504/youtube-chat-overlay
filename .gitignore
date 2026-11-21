@@ -1,5 +1,9 @@
 node_modules/
 config.json
+viewers.json
+viewers.json.tmp
+viewers.backup.json
+viewers.broken-*.json
 dist/
 runtime/
 version.txt

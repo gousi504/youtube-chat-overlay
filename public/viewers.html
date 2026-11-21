@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>コメント管理 - YouTube Chat Overlay</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f1218; --panel: #171b24; --panel2: #1f2531; --line: #2b3242;
+    --text: #e6e9f0; --muted: #8b93a7; --accent: #ff4d6d; --accent2: #4dd0ff; --ok: #3ddc84; --warn: #ffb020;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Noto Sans JP", system-ui, sans-serif; font-size: 14px; display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 14px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0; letter-spacing: .04em; }
+  header h1 span { color: var(--accent); }
+  header a { color: var(--accent2); font-size: 13px; }
+  .private { font-size: 12px; color: var(--warn); border: 1px solid var(--warn); border-radius: 999px; padding: 2px 10px; }
+  .status { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-left: auto; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #555; }
+  .dot.on { background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+  .dot.err { background: var(--accent); }
+
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 400px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; } }
+  .col { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+  .col + .col { border-left: 1px solid var(--line); background: var(--panel); }
+  .bar { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+  .bar b { font-size: 14px; }
+  .bar .sp { flex: 1; }
+  .scroll { flex: 1; overflow-y: auto; min-height: 0; }
+  .hint { color: var(--muted); font-size: 12px; line-height: 1.6; }
+  .empty { padding: 28px 20px; color: var(--muted); line-height: 1.9; }
+
+  input[type=text], select, textarea {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; font: inherit; width: 100%;
+  }
+  textarea { min-height: 80px; resize: vertical; }
+  button { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px 14px; font: inherit; cursor: pointer; }
+  button:hover { border-color: var(--accent2); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+  button.small { padding: 5px 10px; font-size: 12px; }
+  button.danger:hover { border-color: var(--accent); color: var(--accent); }
+  label.check { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); cursor: pointer; user-select: none; }
+
+  /* comment rows */
+  .c { display: flex; gap: 10px; padding: 9px 16px; border-bottom: 1px solid #1c2230; cursor: pointer; }
+  .c:hover { background: #151a24; }
+  .c.first { background: #1d2416; }
+  .c.first:hover { background: #232c1a; }
+  .c.sc { box-shadow: inset 4px 0 0 var(--warn); }
+  .ico { width: 34px; height: 34px; border-radius: 50%; flex: 0 0 auto; background: var(--panel2); object-fit: cover; }
+  .c .main { flex: 1; min-width: 0; }
+  .who { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .alias { font-weight: 700; font-size: 15px; color: #fff; }
+  .real { color: var(--muted); font-size: 12px; }
+  .who .time { margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .tag { font-size: 11px; line-height: 1.6; padding: 0 8px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .tag.first { background: #2f4a1a; border-color: #4f8a2a; color: #c9f5a3; font-weight: 700; }
+  .tag.back { background: #3a2f12; border-color: #7a5d16; color: #ffd98a; }
+  .tag.old { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+  .tag.role { color: var(--accent2); border-color: #2a4a5a; }
+  .tag.money { color: #1a1300; background: var(--warn); border-color: var(--warn); font-weight: 700; }
+  .txt { margin-top: 3px; line-height: 1.6; word-break: break-word; }
+  .txt img { height: 1.4em; vertical-align: -0.3em; }
+  .memo { margin-top: 3px; font-size: 12px; color: #b9a7ff; white-space: pre-wrap; word-break: break-word; }
+
+  /* viewer list */
+  .tools { padding: 10px 16px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+  .tools .line { display: flex; gap: 8px; align-items: center; }
+  .tools select { width: auto; }
+  .v { display: flex; gap: 10px; align-items: center; padding: 8px 16px; border-bottom: 1px solid #1c2230; cursor: pointer; }
+  .v:hover { background: #1c2230; }
+  .v .main { flex: 1; min-width: 0; }
+  .v .n1 { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .v .n2 { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .v .num { text-align: right; font-size: 12px; color: var(--muted); white-space: nowrap; line-height: 1.5; }
+  .v .num b { color: var(--text); font-size: 14px; }
+  .foot { padding: 10px 16px; border-top: 1px solid var(--line); display: flex; gap: 6px; flex-wrap: wrap; }
+
+  /* edit dialog */
+  dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 12px; padding: 0; width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
+  dialog::backdrop { background: rgba(0,0,0,.6); }
+  .dlg { padding: 18px 20px; }
+  .dlg-head { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; }
+  .dlg-head .ico { width: 48px; height: 48px; }
+  .dlg-head .nm { font-size: 17px; font-weight: 700; word-break: break-word; }
+  .dlg label { display: block; color: var(--muted); font-size: 12px; margin: 12px 0 4px; }
+  .facts { margin: 14px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 13px; }
+  .facts dt { color: var(--muted); }
+  .facts dd { margin: 0; word-break: break-word; }
+  .dlg-btns { display: flex; gap: 8px; margin-top: 18px; align-items: center; }
+  .dlg-btns .sp { flex: 1; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #222a38; border: 1px solid var(--line); padding: 10px 14px; border-radius: 8px; opacity: 0; transition: .3s; pointer-events: none; z-index: 99; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>コメント<span>管理</span></h1>
+  <span class="private">この画面は配信に映さない</span>
+  <a href="/">← 設定画面</a>
+  <div class="status"><span class="dot" id="dot"></span><span id="statusText">未接続</span></div>
+</header>
+
+<main>
+  <div class="col">
+    <div class="bar">
+      <b>コメント</b>
+      <span class="hint">行をクリックすると、その人の呼び名やメモを編集できる</span>
+      <span class="sp"></span>
+      <label class="check"><input type="checkbox" id="autoScroll" checked>新着に自動で追従</label>
+      <button class="small" id="btnTest">テストコメント</button>
+      <button class="small" id="btnWipe">表示を消す</button>
+    </div>
+    <div class="scroll" id="comments">
+      <div class="empty" id="noComments">まだコメントはない。<br>配信に接続すると、ここにコメントが流れる。<br>試すだけなら右上の「テストコメント」を押す。</div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="bar"><b>視聴者の記録</b><span class="sp"></span><span class="hint" id="stats"></span></div>
+    <div class="tools">
+      <input type="text" id="search" placeholder="名前・呼び名・メモで検索">
+      <div class="line">
+        <select id="sort">
+          <option value="recent">最近来た順</option>
+          <option value="visits">来た回数が多い順</option>
+          <option value="comments">コメントが多い順</option>
+          <option value="name">名前順</option>
+        </select>
+        <label class="check"><input type="checkbox" id="onlyNamed">呼び名・メモありだけ</label>
+      </div>
+    </div>
+    <div class="scroll" id="list"></div>
+    <div class="foot">
+      <button class="small" id="btnExport">記録を書き出し（バックアップ）</button>
+      <button class="small" id="btnImport">読み込み</button>
+      <button class="small danger" id="btnDelTests">テスト用の人を消す</button>
+      <input type="file" id="fileImport" accept=".json" hidden>
+    </div>
+  </div>
+</main>
+
+<dialog id="dlg">
+  <form class="dlg" method="dialog" id="dlgForm">
+    <div class="dlg-head"><img class="ico" id="dIcon" alt=""><div><div class="nm" id="dName"></div><div class="hint" id="dSub"></div></div></div>
+    <label for="dAlias">呼び名（この管理画面だけに表示。配信画面には出ない）</label>
+    <input type="text" id="dAlias" maxlength="40" placeholder="例: たなかさん">
+    <label for="dMemo">メモ（自分用。配信画面には出ない）</label>
+    <textarea id="dMemo" maxlength="300" placeholder="例: 絵が上手い。前回ゲームの話をした"></textarea>
+    <dl class="facts" id="dFacts"></dl>
+    <div class="dlg-btns">
+      <button type="button" class="small danger" id="dDelete">この人の記録を消す</button>
+      <span class="sp"></span>
+      <button type="button" id="dCancel">閉じる</button>
+      <button type="submit" class="primary" id="dSave">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  const $ = (s) => document.querySelector(s);
+  const viewers = new Map();   // channelId -> ledger entry
+  const rows = [];             // { m, el } for comments on screen, oldest first
+  const seen = new Set();      // comment ids already shown
+  const MAX_ROWS = 300, MAX_LIST = 300;
+  let editing = null;
+
+  // ---------- small helpers ----------
+  let toastT;
+  function toast(msg) {
+    const t = $("#toast");
+    t.textContent = msg; t.classList.add("show");
+    clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 1800);
+  }
+  // All text from YouTube (names, comments) is untrusted: it is only ever put in via textContent.
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function img(cls, src) {
+    const i = el("img", cls);
+    i.alt = ""; i.referrerPolicy = "no-referrer";
+    if (typeof src === "string" && /^https:\/\//.test(src)) i.src = src; else i.style.visibility = "hidden";
+    i.onerror = () => { i.style.visibility = "hidden"; };
+    return i;
+  }
+  const pad = (n) => String(n).padStart(2, "0");
+  const hm = (ts) => { const d = new Date(ts); return pad(d.getHours()) + ":" + pad(d.getMinutes()); };
+  const ymd = (ts) => { const d = new Date(ts); return d.getFullYear() + "/" + (d.getMonth() + 1) + "/" + d.getDate(); };
+  function ago(ts) {
+    const min = Math.floor((Date.now() - ts) / 60000);
+    if (min < 1) return "たった今";
+    if (min < 60) return min + "分前";
+    const h = Math.floor(min / 60);
+    if (h < 24) return h + "時間前";
+    const d = Math.floor(h / 24);
+    if (d < 31) return d + "日前";
+    if (d < 365) return Math.floor(d / 30.4) + "か月前";
+    return Math.floor(d / 365) + "年前";
+  }
+  const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+
+  // ---------- comment rows ----------
+  function buildRow(m) {
+    const v = viewers.get(m.author.channelId) || null;
+    const row = el("div", "c");
+    if (m.superchat) row.classList.add("sc");
+    row.appendChild(img("ico", m.author.icon));
+    const main = el("div", "main");
+    const who = el("div", "who");
+
+    if (v && v.alias) {
+      who.appendChild(el("span", "alias", v.alias));
+      who.appendChild(el("span", "real", "（" + m.author.name + "）"));
+    } else {
+      who.appendChild(el("span", "alias", m.author.name));
+    }
+
+    if (!v) {
+      if (m.first) { who.appendChild(el("span", "tag first", "初見")); row.classList.add("first"); }
+      who.appendChild(el("span", "tag", "記録なし"));
+    } else if (v.visits <= 1) {
+      who.appendChild(el("span", "tag first", "初見"));
+      row.classList.add("first");
+    } else {
+      who.appendChild(el("span", "tag", v.visits + "回目"));
+      if (v.prevSeen) who.appendChild(el("span", "tag back", "前回 " + ago(v.prevSeen)));
+    }
+    if (v && v.names.length) {
+      const t = el("span", "tag old", "旧名: " + v.names.map(n => n.name).join(" ／ "));
+      t.title = t.textContent;
+      who.appendChild(t);
+    }
+    if (m.isOwner) who.appendChild(el("span", "tag role", "配信者"));
+    if (m.isModerator) who.appendChild(el("span", "tag role", "モデレーター"));
+    if (m.isMembership) who.appendChild(el("span", "tag role", "メンバー"));
+    if (m.superchat) who.appendChild(el("span", "tag money", m.superchat.amount));
+    who.appendChild(el("span", "time", hm(m.timestamp)));
+    main.appendChild(who);
+
+    const txt = el("div", "txt");
+    m.message.forEach(p => {
+      if (p.emoji) { const e = img("", p.emoji); e.alt = p.alt || ""; e.title = p.alt || ""; txt.appendChild(e); }
+      else txt.appendChild(document.createTextNode(p.text || ""));
+    });
+    main.appendChild(txt);
+    if (v && v.memo) main.appendChild(el("div", "memo", "メモ: " + v.memo));
+    row.appendChild(main);
+
+    row.onclick = () => { if (v) openEditor(v.id); else toast("この人は記録に無い（テスト用の表示）"); };
+    return row;
+  }
+
+  function addComment(m) {
+    if (!m || !m.author || seen.has(m.id)) return;
+    seen.add(m.id);
+    if (m.viewer) viewers.set(m.viewer.id, m.viewer);
+    const box = $("#comments");
+    $("#noComments").hidden = true;
+    const r = { m, el: buildRow(m) };
+    rows.push(r);
+    box.appendChild(r.el);
+    while (rows.length > MAX_ROWS) { const old = rows.shift(); old.el.remove(); seen.delete(old.m.id); }
+    if ($("#autoScroll").checked) box.scrollTop = box.scrollHeight;
+  }
+  function refreshRows(id) {
+    rows.forEach(r => {
+      if (id && r.m.author.channelId !== id) return;
+      const fresh = buildRow(r.m);
+      r.el.replaceWith(fresh); r.el = fresh;
+    });
+  }
+  function wipe() {
+    rows.forEach(r => r.el.remove());
+    rows.length = 0;
+    $("#noComments").hidden = false;
+  }
+
+  // ---------- viewer list ----------
+  let listT;
+  function renderListSoon() { clearTimeout(listT); listT = setTimeout(renderList, 120); }
+  function renderList() {
+    const q = $("#search").value.trim().toLowerCase();
+    const onlyNamed = $("#onlyNamed").checked;
+    const sort = $("#sort").value;
+    let arr = Array.from(viewers.values());
+    const real = arr.filter(v => !v.test).length;
+    if (onlyNamed) arr = arr.filter(v => v.alias || v.memo);
+    if (q) arr = arr.filter(v => [v.name, v.alias, v.memo].concat(v.names.map(n => n.name)).some(s => (s || "").toLowerCase().includes(q)));
+    arr.sort(sort === "visits" ? (a, b) => b.visits - a.visits || b.lastSeen - a.lastSeen
+      : sort === "comments" ? (a, b) => b.comments - a.comments
+      : sort === "name" ? (a, b) => (a.alias || a.name).localeCompare(b.alias || b.name, "ja")
+      : (a, b) => b.lastSeen - a.lastSeen);
+
+    const box = $("#list");
+    box.textContent = "";
+    $("#stats").textContent = real + " 人";
+    if (!arr.length) {
+      box.appendChild(el("div", "empty", viewers.size ? "当てはまる人がいない。" : "まだ記録はない。コメントした人がここに増えていく。"));
+      return;
+    }
+    arr.slice(0, MAX_LIST).forEach(v => {
+      const row = el("div", "v");
+      row.appendChild(img("ico", v.icon));
+      const main = el("div", "main");
+      main.appendChild(el("div", "n1", (v.alias || v.name) + (v.test ? "（テスト）" : "")));
+      const sub = [];
+      if (v.alias) sub.push(v.name);
+      if (v.names.length) sub.push("旧名: " + v.names.map(n => n.name).join(" ／ "));
+      if (v.memo) sub.push("メモ: " + v.memo.replace(/\n/g, " "));
+      if (sub.length) main.appendChild(el("div", "n2", sub.join("　")));
+      row.appendChild(main);
+      const num = el("div", "num");
+      num.appendChild(el("b", "", v.visits + "回"));
+      num.appendChild(el("br"));
+      num.appendChild(document.createTextNode(ago(v.lastSeen)));
+      row.appendChild(num);
+      row.onclick = () => openEditor(v.id);
+      box.appendChild(row);
+    });
+    if (arr.length > MAX_LIST) box.appendChild(el("div", "empty", "ほか " + (arr.length - MAX_LIST) + " 人。検索で絞り込める。"));
+  }
+  $("#search").oninput = renderListSoon;
+  $("#sort").onchange = renderList;
+  $("#onlyNamed").onchange = renderList;
+
+  // ---------- editor ----------
+  const dlg = $("#dlg");
+  function openEditor(id) {
+    const v = viewers.get(id);
+    if (!v) return;
+    editing = id;
+    const ic = $("#dIcon");
+    ic.style.visibility = "";
+    if (/^https:\/\//.test(v.icon || "")) ic.src = v.icon; else { ic.removeAttribute("src"); ic.style.visibility = "hidden"; }
+    $("#dName").textContent = v.name + (v.test ? "（テスト用）" : "");
+    const sub = $("#dSub");
+    sub.textContent = "";
+    if (/^UC[A-Za-z0-9_-]{22}$/.test(v.id)) {
+      const a = el("a", "", "YouTubeのチャンネルを開く ↗");
+      a.href = "https://www.youtube.com/channel/" + v.id; a.target = "_blank"; a.rel = "noopener noreferrer"; a.style.color = "var(--accent2)";
+      sub.appendChild(a);
+    }
+    $("#dAlias").value = v.alias;
+    $("#dMemo").value = v.memo;
+    const f = $("#dFacts");
+    f.textContent = "";
+    const fact = (k, val) => { f.appendChild(el("dt", "", k)); f.appendChild(el("dd", "", val)); };
+    fact("来た回数", v.visits + " 回（コメントした配信の数）");
+    fact("コメント数", v.comments + " 件");
+    fact("最後に来た", ymd(v.lastSeen) + "（" + ago(v.lastSeen) + "）");
+    if (v.prevSeen) fact("その前に来た", ymd(v.prevSeen) + "（" + ago(v.prevSeen) + "）");
+    fact("初めて来た", ymd(v.firstSeen));
+    fact("以前の名前", v.names.length ? v.names.map(n => n.name + (n.until ? "（〜" + ymd(n.until) + "）" : "")).join("、") : "なし");
+    if (!dlg.open) dlg.showModal();
+    $("#dAlias").focus();
+  }
+  $("#dCancel").onclick = () => dlg.close();
+  $("#dlgForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const r = await post("/api/viewers/update", { id: editing, alias: $("#dAlias").value, memo: $("#dMemo").value }).then(r => r.json()).catch(() => null);
+    if (!r || !r.ok) return toast("保存できなかった");
+    applyViewer(r.viewer);
+    dlg.close(); toast("保存した");
+  };
+  $("#dDelete").onclick = async () => {
+    const v = viewers.get(editing);
+    if (!v || !confirm("「" + v.name + "」の記録（来た回数・呼び名・メモ）を消す。元に戻せない。よい？")) return;
+    await post("/api/viewers/delete", { id: editing });
+    dlg.close(); toast("消した");
+  };
+  function applyViewer(v) {
+    viewers.set(v.id, v);
+    refreshRows(v.id);
+    renderListSoon();
+  }
+
+  // ---------- buttons ----------
+  const kinds = ["normal", "normal", "member", "long", "superchat", "normal", "moderator"];
+  let kindI = 0;
+  $("#btnTest").onclick = () => post("/api/test", { kind: kinds[kindI++ % kinds.length] });
+  $("#btnWipe").onclick = wipe;
+  $("#btnDelTests").onclick = async () => {
+    if (!confirm("テストコメントで作られた人の記録をまとめて消す。よい？")) return;
+    await post("/api/viewers/delete", { tests: true });
+    toast("テスト用の人を消した");
+  };
+  $("#btnExport").onclick = async () => {
+    const data = await fetch("/api/viewers/export").then(r => r.json());
+    const d = new Date();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: "application/json" }));
+    a.download = "viewers-backup-" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + ".json";
+    a.click();
+  };
+  $("#btnImport").onclick = () => $("#fileImport").click();
+  $("#fileImport").onchange = async (e) => {
+    const f = e.target.files[0]; e.target.value = "";
+    if (!f) return;
+    let data;
+    try { data = JSON.parse(await f.text()); } catch { return toast("読み込み失敗（ファイルが違う）"); }
+    if (!confirm("いまの記録を、このファイルの内容に置き換える。よい？")) return;
+    const r = await post("/api/viewers/import", data).then(r => r.json()).catch(() => null);
+    toast(r && r.ok ? "読み込んだ（" + r.stats.viewers + " 人）" : "読み込み失敗（ファイルが違う）");
+  };
+
+  // ---------- data ----------
+  async function loadAll() {
+    const [vs, rc] = await Promise.all([
+      fetch("/api/viewers").then(r => r.json()),
+      fetch("/api/recent").then(r => r.json()),
+    ]);
+    viewers.clear();
+    vs.viewers.forEach(v => viewers.set(v.id, v));
+    rc.items.forEach(addComment);
+    refreshRows();
+    renderList();
+    if (editing && dlg.open && !viewers.has(editing)) dlg.close();
+  }
+  function showStatus(s) {
+    $("#dot").className = "dot " + (s.connected ? "on" : s.error ? "err" : "");
+    $("#statusText").textContent = s.connected ? "接続中: " + s.liveId : s.error ? "エラー: " + s.error : "未接続（設定画面で接続する）";
+  }
+  function connect() {
+    const ws = new WebSocket((location.protocol === "https:" ? "wss" : "ws") + "://" + location.host + "/?role=admin");
+    ws.onopen = () => loadAll().catch(() => {});
+    ws.onmessage = (ev) => {
+      let d;
+      try { d = JSON.parse(ev.data); } catch { return; }
+      if (d.type === "chat") { addComment(d); renderListSoon(); }
+      else if (d.type === "viewer") applyViewer(d.viewer);
+      else if (d.type === "viewers-changed") loadAll().catch(() => {});
+      else if (d.type === "status") showStatus(d.status);
+    };
+    ws.onclose = () => { showStatus({ error: "ツールが止まっている（start.bat を起動する）" }); setTimeout(connect, 2000); };
+    ws.onerror = () => ws.close();
+  }
+  setInterval(() => { refreshRows(); renderList(); }, 60000); // keep "3分前" style labels fresh
+  connect();
+})();
+</script>
+</body>
+</html>

@@ -12,7 +12,7 @@ echo   YouTube Chat Overlay を最新版に更新します
 echo ============================================
 echo.
 echo  先に、起動中の黒い窓（start.bat）を閉じてください。
-echo  今の設定（config.json）はそのまま残ります。
+echo  今の設定（config.json）と視聴者の記録（viewers.json）はそのまま残ります。
 echo.
 if exist "%~dp0.git" goto :devfolder
 pause
@@ -24,7 +24,7 @@ echo [2/3] 展開中...
 tar.exe -xf "%WORK%\latest.zip" -C "%WORK%" || goto :fail
 if not exist "%SRC%\server.js" goto :fail
 echo [3/3] 上書き中...
-robocopy "%SRC%" "%~dp0." /E /XF update.bat config.json /XD node_modules public runtime /R:1 /W:1 /NFL /NDL /NJH /NJS /NP >nul
+robocopy "%SRC%" "%~dp0." /E /XF update.bat config.json viewers*.json /XD node_modules public runtime /R:1 /W:1 /NFL /NDL /NJH /NJS /NP >nul
 if errorlevel 8 goto :fail
 robocopy "%SRC%\node_modules" "%~dp0node_modules" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS /NP >nul
 if errorlevel 8 goto :fail

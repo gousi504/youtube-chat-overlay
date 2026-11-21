@@ -96,6 +96,7 @@
 <body>
 <header>
   <h1>YouTube <span>Chat Overlay</span></h1>
+  <a href="viewers.html" target="_blank" rel="noopener" style="color:var(--accent2);font-size:13px">コメント管理画面を開く ↗</a>
   <div class="status"><span class="dot" id="dot"></span><span id="statusText">未接続</span></div>
 </header>
 
@@ -204,6 +205,20 @@
     </div>
   </section>
 
+  <!-- ===== 初見さん ===== -->
+  <section>
+    <h2>初見さんの演出</h2>
+    <div class="content">
+      <p class="hint">このツールで初めてコメントした人の、最初のコメントに印を付ける。<br>
+      ツールは「今までにコメントした人」を記録して判定する。使い始めの数回は常連さんも初見扱いになるので、記録が増えてから入れるのがおすすめ。</p>
+      <div class="row"><label>演出</label><div class="ctl">
+        <select data-key="firstEffect"><option value="off">なし</option><option value="badge">印を付ける</option><option value="glow">印＋枠がきらめく</option></select></div></div>
+      <div class="row"><label>印の文字</label><div class="ctl"><input type="text" data-key="firstLabel" maxlength="30"></div></div>
+      <p class="hint" id="ledgerStats"></p>
+      <p class="hint">見た目は右上の「初見」ボタンで確認できる（演出が「なし」のあいだは印が出ない）。</p>
+    </div>
+  </section>
+
   <!-- ===== レイアウト ===== -->
   <section>
     <h2>レイアウト・動き</h2>
@@ -274,6 +289,7 @@
     <button class="small" data-test="owner">配信者</button>
     <button class="small" data-test="superchat">スパチャ</button>
     <button class="small" data-test="long">長文</button>
+    <button class="small" data-test="first">初見</button>
     <button class="small" id="btnAuto">連続テスト</button>
     <button class="small" id="btnClear">全消去</button>
   </div>
@@ -583,6 +599,9 @@
     renderTopics();
     fill();
     ws();
+    fetch("/api/viewers").then(r => r.json()).then(d => {
+      $("#ledgerStats").textContent = "いまの記録: " + d.stats.streams + " 回の配信 ／ " + d.stats.viewers + " 人";
+    }).catch(() => {});
   })();
 })();
 </script>

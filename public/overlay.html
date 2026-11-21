@@ -111,12 +111,17 @@
       paintSuperchat(el);
     }
 
-    let html = "";
+    // first comment ever from this person (decided by the server's viewer ledger)
+    const isFirst = m.first === true && !m.isOwner && (cfg.firstEffect === "badge" || cfg.firstEffect === "glow");
+    if (isFirst) el.classList.add("first", "first-" + cfg.firstEffect);
+
+    let html = isFirst ? `<span class="first-fx"></span>` : "";
     if (cfg.showIcon && m.author.icon) {
       html += `<img class="icon" src="${esc(m.author.icon)}" alt="" onerror="this.style.visibility='hidden'">`;
     }
     html += `<div class="body">`;
     const head = [];
+    if (isFirst && cfg.firstLabel.trim()) head.push(`<span class="first-tag">${esc(cfg.firstLabel.trim())}</span>`);
     if (cfg.showName) head.push(`<span class="name">${esc(m.author.name)}</span>`);
     if (cfg.showBadge && m.author.badge) head.push(`<img class="badge" src="${esc(m.author.badge)}" alt="">`);
     if (m.superchat) head.push(`<span class="amount">${esc(m.superchat.amount)}</span>`);
